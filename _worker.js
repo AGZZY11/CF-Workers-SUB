@@ -69,9 +69,10 @@ export default {
 		}
 
 		// 计算流量信息 - 基于当前时间与过期时间的差值
+		// 如果没有从KV中获取设置，则使用默认值
+		const totalBytes = total * 1099511627776; // 转换为字节 (TB to bytes)
 		const timePercent = (timestamp - Date.now()) / timestamp;
-		let UD = Math.floor(total * 1099511627776 * (1 - timePercent));
-		total = total * 1099511627776;
+		let UD = Math.floor(totalBytes * (1 - timePercent)); // 已使用流量
 		let expire = Math.floor(timestamp / 1000);
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
 
@@ -530,24 +531,51 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 				// 检查是否为流量参数更新请求
 				if (url.searchParams.has('updateTraffic')) {
 					try {
+						// 获取Content-Type头
 						const contentType = request.headers.get('Content-Type') || '';
 						let data;
 						
+						// 根据Content-Type选择不同的解析方法
 						if (contentType.includes('application/json')) {
-							data = await request.json();
+							// 直接使用json()方法解析JSON
+							try {
+								data = await request.json();
+								console.log('JSON解析成功:', data);
+							} catch (jsonError) {
+								console.error('JSON解析失败:', jsonError);
+								// 如果json()方法失败，尝试手动解析
+								const text = await request.text();
+								console.log('尝试手动解析JSON, 收到的数据:', text);
+								try {
+									data = JSON.parse(text);
+									console.log('手动JSON解析成功:', data);
+								} catch (parseError) {
+									console.error('手动解析JSON失败:', parseError);
+									return new Response(JSON.stringify({
+										success: false, 
+										message: "无效的JSON格式",
+										error: parseError.message,
+										receivedData: text.substring(0, 100) // 仅记录前100个字符用于调试
+									}), {
+										status: 400,
+										headers: { "Content-Type": "application/json" }
+									});
+								}
+							}
 						} else {
-							// 尝试手动解析请求体
+							// 对于其他Content-Type，尝试解析文本
 							const text = await request.text();
-							console.log('Received data:', text);
+							console.log('非JSON Content-Type, 收到的数据:', text);
 							try {
 								data = JSON.parse(text);
+								console.log('尽管Content-Type不是application/json，但成功解析为JSON:', data);
 							} catch (parseError) {
-								console.error('解析JSON失败:', parseError);
+								console.error('解析数据失败:', parseError);
 								return new Response(JSON.stringify({
 									success: false, 
-									message: "无效的数据格式",
+									message: "无效的数据格式，请确保发送JSON数据并设置正确的Content-Type",
 									error: parseError.message,
-									receivedData: text.substring(0, 100) // 记录前100个字符用于调试
+									receivedData: text.substring(0, 100) // 仅记录前100个字符用于调试
 								}), {
 									status: 400,
 									headers: { "Content-Type": "application/json" }
@@ -555,33 +583,46 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							}
 						}
 						
-						if (data && data.total) {
+						// 更新流量参数
+						console.log('准备更新流量参数:', data);
+						if (data && data.total !== undefined) {
 							await env.KV.put('TOTAL', data.total.toString());
+							console.log('更新总流量为:', data.total);
 						}
-						if (data && data.timestamp) {
+						if (data && data.timestamp !== undefined) {
 							await env.KV.put('TIMESTAMP', data.timestamp.toString());
+							console.log('更新过期时间戳为:', data.timestamp);
 						}
 						
-						return new Response(JSON.stringify({success: true, message: "流量参数更新成功"}), {
+						// 返回成功响应
+						return new Response(JSON.stringify({
+							success: true, 
+							message: "流量参数更新成功",
+							updatedData: {
+								total: data?.total,
+								timestamp: data?.timestamp
+							}
+						}), {
 							headers: { "Content-Type": "application/json" }
 						});
-					} catch (jsonError) {
-						console.error('处理JSON请求出错:', jsonError);
+					} catch (error) {
+						console.error('处理流量参数请求出错:', error);
 						return new Response(JSON.stringify({
 							success: false,
 							message: "处理请求失败",
-							error: jsonError.message
+							error: error.message
 						}), {
-							status: 400,
+							status: 500,
 							headers: { "Content-Type": "application/json" }
 						});
 					}
-				} else {
-					// 常规节点链接更新
-					const content = await request.text();
-					await env.KV.put(txt, content);
-					return new Response("保存成功");
 				}
+				
+				// 常规节点链接更新
+				const content = await request.text();
+				await env.KV.put(txt, content);
+				return new Response("保存成功");
+				
 			} catch (error) {
 				console.error('保存KV时发生错误:', error);
 				return new Response("保存失败: " + error.message, { status: 500 });
@@ -928,7 +969,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 											<div class="col-md-6">
 												<label for="totalTraffic" class="form-label">总流量 (TB)</label>
 												<div class="input-group mb-3">
-													<input type="number" class="form-control" id="totalTraffic" value="${currentTotal}" min="1" max="9999">
+													<input type="number" class="form-control" id="totalTraffic" value="${currentTotal}">
 													<span class="input-group-text">TB</span>
 												</div>
 											</div>
@@ -1216,10 +1257,13 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					if (statusElem) statusElem.textContent = '保存中...';
 					
 					// 准备数据
-					const jsonData = JSON.stringify({
+					const data = {
 						total: parseInt(totalTraffic),
 						timestamp: timestamp
-					});
+					};
+					
+					// 转换为JSON字符串并确保格式正确
+					const jsonData = JSON.stringify(data);
 					
 					console.log('Sending data:', jsonData);
 					
@@ -1236,11 +1280,16 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						console.log('Response status:', response.status);
 						return response.text().then(function(text) {
 							console.log('Response text:', text);
+							// 检查响应文本是否为空
+							if (!text || text.trim() === '') {
+								return { success: false, message: '服务器返回了空响应' };
+							}
+							
 							try {
 								return JSON.parse(text);
 							} catch (e) {
-								console.error('解析响应JSON失败:', e);
-								return { success: false, message: '服务器响应格式错误: ' + text };
+								console.error('解析响应JSON失败:', e, '响应文本:', text);
+								return { success: false, message: '服务器响应格式错误' };
 							}
 						});
 					})
@@ -1261,8 +1310,26 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 				}
 		
 				// 初始化页面
-				document.addEventListener('DOMContentLoaded', () => {
+				document.addEventListener('DOMContentLoaded', function() {
+					// 隐藏通知内容
 					document.getElementById('noticeContent').style.display = 'none';
+					
+					// 格式化流量显示（防止科学计数法）
+					var totalTrafficInput = document.getElementById('totalTraffic');
+					if (totalTrafficInput) {
+						// 保存原始值
+						var originalValue = parseFloat(totalTrafficInput.value);
+						
+						// 使用toFixed确保显示为普通数字而非科学计数法
+						totalTrafficInput.value = originalValue.toFixed(0);
+						
+						// 添加事件监听器，防止输入框内容被自动转为科学计数法
+						totalTrafficInput.addEventListener('change', function() {
+							if (!isNaN(parseFloat(this.value))) {
+								this.value = parseFloat(this.value).toFixed(0);
+							}
+						});
+					}
 				});
 				</script>
 			</div>
