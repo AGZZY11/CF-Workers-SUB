@@ -85,20 +85,16 @@ export default {
 
 		// 计算已使用流量 - 基于已经过去的时间比例
 		const currentTime = Date.now();
-
-		// 计算订阅周期 - 调整为总天数固定为30天
-		const totalDays = 30; // 固定订阅周期30天
-		const endTime = timestamp; // 过期时间
-		// 计算开始时间（从过期时间往前30天）
-		const startTime = new Date(endTime);
-		startTime.setDate(startTime.getDate() - totalDays);
+		// 使用当前时间减去30天作为订阅开始时间（假设一个订阅周期为一个月）
+		const startTime = new Date();
+		startTime.setDate(startTime.getDate() - 30); // 默认30天前作为起始时间
 		startTime.setHours(0, 0, 0, 0); // 设置为当天0点
 
 		const elapsedTime = currentTime - startTime.getTime(); 
-		const totalTime = endTime - startTime.getTime();
+		const totalTime = timestamp - startTime.getTime();
 		console.log('当前时间:', new Date(currentTime).toISOString(), 
-		            '开始时间:', new Date(startTime).toISOString(),
-		            '过期时间:', new Date(endTime).toISOString());
+		            '开始时间:', startTime.toISOString(),
+		            '过期时间:', new Date(timestamp).toISOString());
 		console.log('已过时间(毫秒):', elapsedTime, 
 		            '总时间(毫秒):', totalTime,
 		            '时间百分比:', (elapsedTime/totalTime).toFixed(4));
@@ -110,15 +106,6 @@ export default {
 			// 确保不超过总流量
 			usedBytes = Math.floor(totalBytes * Math.min(elapsedPercent, 1));
 		} 
-
-		// 如果计算结果与实际显示相差较大，可以调整系数使结果更准确
-		// 假设客户端显示已用约2.12TB，总量5TB，比例约为0.424
-		const adjustmentFactor = 0.9; // 调整系数，使计算结果更接近实际显示
-		const rawUsedBytes = usedBytes; // 保存原始计算结果
-		usedBytes = Math.floor(usedBytes * adjustmentFactor);
-		console.log('调整前已用流量(TB):', (rawUsedBytes / 1099511627776).toFixed(2), 
-		            '调整系数:', adjustmentFactor,
-		            '调整后已用流量(TB):', (usedBytes / 1099511627776).toFixed(2));
 
 		// 剩余流量
 		let remainBytes = totalBytes - usedBytes;
@@ -268,7 +255,7 @@ export default {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
 			} else if (订阅格式 == 'clash') {
@@ -291,7 +278,7 @@ export default {
 						headers: {
 							"content-type": "text/plain; charset=utf-8",
 							"Profile-Update-Interval": `${SUBUpdateTime}`,
-							"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+							"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 						}
 					});
 					//throw new Error(`Error fetching subConverterUrl: ${subConverterResponse.status} ${subConverterResponse.statusText}`);
@@ -303,17 +290,17 @@ export default {
 						"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}`,
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 					},
 				});
 			} catch (error) {
 				return new Response(base64Data, {
-						headers: {
-							"content-type": "text/plain; charset=utf-8",
-							"Profile-Update-Interval": `${SUBUpdateTime}`,
-							"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
-						}
-					});
+					headers: {
+						"content-type": "text/plain; charset=utf-8",
+						"Profile-Update-Interval": `${SUBUpdateTime}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
+					}
+				});
 			}
 		}
 	}
