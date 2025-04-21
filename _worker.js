@@ -529,12 +529,53 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 			try {
 				// 检查是否为流量参数更新请求
 				if (url.searchParams.has('updateTraffic')) {
-					const data = await request.json();
-					if (data.total) await env.KV.put('TOTAL', data.total.toString());
-					if (data.timestamp) await env.KV.put('TIMESTAMP', data.timestamp.toString());
-					return new Response(JSON.stringify({success: true, message: "流量参数更新成功"}), {
-						headers: { "Content-Type": "application/json" }
-					});
+					try {
+						const contentType = request.headers.get('Content-Type') || '';
+						let data;
+						
+						if (contentType.includes('application/json')) {
+							data = await request.json();
+						} else {
+							// 尝试手动解析请求体
+							const text = await request.text();
+							console.log('Received data:', text);
+							try {
+								data = JSON.parse(text);
+							} catch (parseError) {
+								console.error('解析JSON失败:', parseError);
+								return new Response(JSON.stringify({
+									success: false, 
+									message: "无效的数据格式",
+									error: parseError.message,
+									receivedData: text.substring(0, 100) // 记录前100个字符用于调试
+								}), {
+									status: 400,
+									headers: { "Content-Type": "application/json" }
+								});
+							}
+						}
+						
+						if (data && data.total) {
+							await env.KV.put('TOTAL', data.total.toString());
+						}
+						if (data && data.timestamp) {
+							await env.KV.put('TIMESTAMP', data.timestamp.toString());
+						}
+						
+						return new Response(JSON.stringify({success: true, message: "流量参数更新成功"}), {
+							headers: { "Content-Type": "application/json" }
+						});
+					} catch (jsonError) {
+						console.error('处理JSON请求出错:', jsonError);
+						return new Response(JSON.stringify({
+							success: false,
+							message: "处理请求失败",
+							error: jsonError.message
+						}), {
+							status: 400,
+							headers: { "Content-Type": "application/json" }
+						});
+					}
 				} else {
 					// 常规节点链接更新
 					const content = await request.text();
@@ -984,8 +1025,46 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 				}
 				
 				function showToast(message, type = 'success') {
-					// 简单提示消息
-					alert(message);
+					// 创建更美观的通知，而不是简单的alert
+					// 检查是否已存在toast容器
+					let toastContainer = document.getElementById('toast-container');
+					if (!toastContainer) {
+						toastContainer = document.createElement('div');
+						toastContainer.id = 'toast-container';
+						toastContainer.style.position = 'fixed';
+						toastContainer.style.top = '20px';
+						toastContainer.style.right = '20px';
+						toastContainer.style.zIndex = '1050';
+						document.body.appendChild(toastContainer);
+					}
+					
+					// 创建新toast
+					const toast = document.createElement('div');
+					toast.className = type === 'danger' ? 'alert alert-danger' : 'alert alert-success';
+					toast.style.minWidth = '250px';
+					toast.style.marginBottom = '10px';
+					toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+					toast.style.transition = 'all 0.3s ease';
+					toast.style.opacity = '0';
+					
+					// 设置内容
+					toast.textContent = message;
+					
+					// 添加到容器
+					toastContainer.appendChild(toast);
+					
+					// 显示toast
+					setTimeout(function() {
+						toast.style.opacity = '1';
+					}, 10);
+					
+					// 定时关闭
+					setTimeout(function() {
+						toast.style.opacity = '0';
+						setTimeout(function() {
+							toastContainer.removeChild(toast);
+						}, 300);
+					}, 3000);
 				}
 					
 				if (document.querySelector('.editor')) {
@@ -1000,8 +1079,8 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					
 					function saveContent(button) {
 						try {
-							const updateButtonText = (step) => {
-								button.textContent = \`保存中: \${step}\`;
+							const updateButtonText = function(step) {
+								button.textContent = '保存中: ' + step;
 							};
 							// 检测是否为iOS设备
 							const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -1031,7 +1110,8 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							}
 
 							updateButtonText('准备状态更新函数');
-							const updateStatus = (message, isError = false) => {
+							const updateStatus = function(message, isError) {
+								isError = !!isError;
 								const statusElem = document.getElementById('saveStatus');
 								if (statusElem) {
 									statusElem.textContent = message;
@@ -1040,7 +1120,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							};
 
 							updateButtonText('准备按钮重置函数');
-							const resetButton = () => {
+							const resetButton = function() {
 								button.textContent = '保存';
 								button.disabled = false;
 							};
@@ -1055,22 +1135,22 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 									},
 									cache: 'no-cache'
 								})
-								.then(response => {
+								.then(function(response) {
 									updateButtonText('检查响应状态');
 									if (!response.ok) {
-										throw new Error(\`HTTP error! status: \${response.status}\`);
+										throw new Error('HTTP error! status: ' + response.status);
 									}
 									updateButtonText('更新保存状态');
 									const now = new Date().toLocaleString();
-									document.title = \`编辑已保存 \${now}\`;
-									updateStatus(\`已保存 \${now}\`);
+									document.title = '编辑已保存 ' + now;
+									updateStatus('已保存 ' + now);
 								})
-								.catch(error => {
+								.catch(function(error) {
 									updateButtonText('处理错误');
 									console.error('Save error:', error);
-									updateStatus(\`保存失败: \${error.message}\`, true);
+									updateStatus('保存失败: ' + error.message, true);
 								})
-								.finally(() => {
+								.finally(function() {
 									resetButton();
 								});
 							} else {
@@ -1084,7 +1164,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							button.disabled = false;
 							const statusElem = document.getElementById('saveStatus');
 							if (statusElem) {
-								statusElem.textContent = \`错误: \${error.message}\`;
+								statusElem.textContent = '错误: ' + error.message;
 								statusElem.style.color = 'red';
 							}
 						}
@@ -1131,29 +1211,52 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						return;
 					}
 					
+					// 显示保存中状态
+					const statusElem = document.getElementById('trafficStatus');
+					if (statusElem) statusElem.textContent = '保存中...';
+					
+					// 准备数据
+					const jsonData = JSON.stringify({
+						total: parseInt(totalTraffic),
+						timestamp: timestamp
+					});
+					
+					console.log('Sending data:', jsonData);
+					
 					// 发送请求保存设置
 					fetch(window.location.href + '?updateTraffic=1', {
 						method: 'POST',
 						headers: {
-							'Content-Type': 'application/json'
+							'Content-Type': 'application/json',
+							'Accept': 'application/json'
 						},
-						body: JSON.stringify({
-							total: parseInt(totalTraffic),
-							timestamp: timestamp
-						})
+						body: jsonData
 					})
-					.then(response => response.json())
-					.then(data => {
+					.then(function(response) {
+						console.log('Response status:', response.status);
+						return response.text().then(function(text) {
+							console.log('Response text:', text);
+							try {
+								return JSON.parse(text);
+							} catch (e) {
+								console.error('解析响应JSON失败:', e);
+								return { success: false, message: '服务器响应格式错误: ' + text };
+							}
+						});
+					})
+					.then(function(data) {
 						if (data.success) {
 							showToast('流量设置已更新');
-							document.getElementById('trafficStatus').textContent = '已更新 ' + new Date().toLocaleString();
+							if (statusElem) statusElem.textContent = '已更新 ' + new Date().toLocaleString();
 						} else {
 							showToast('更新失败: ' + (data.message || '未知错误'), 'danger');
+							if (statusElem) statusElem.textContent = '更新失败 ' + new Date().toLocaleString();
 						}
 					})
-					.catch(error => {
+					.catch(function(error) {
 						console.error('保存流量设置出错:', error);
 						showToast('更新失败: ' + error.message, 'danger');
+						if (statusElem) statusElem.textContent = '更新失败 ' + new Date().toLocaleString();
 					});
 				}
 		
