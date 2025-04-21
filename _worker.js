@@ -81,9 +81,46 @@ export default {
 		// 计算流量信息 - 基于当前时间与过期时间的差值
 		// 如果没有从KV中获取设置，则使用默认值
 		const totalBytes = total * 1099511627776; // 转换为字节 (TB to bytes)
-		const timePercent = (timestamp - Date.now()) / timestamp;
-		let UD = Math.floor(totalBytes * (1 - timePercent)); // 已使用流量
+		console.log('总流量(字节):', totalBytes, '总流量(TB):', total);
+
+		// 计算已使用流量 - 基于已经过去的时间比例
+		const currentTime = Date.now();
+		// 使用当前时间减去30天作为订阅开始时间（假设一个订阅周期为一个月）
+		const startTime = new Date();
+		startTime.setDate(startTime.getDate() - 30); // 默认30天前作为起始时间
+		startTime.setHours(0, 0, 0, 0); // 设置为当天0点
+
+		const elapsedTime = currentTime - startTime.getTime(); 
+		const totalTime = timestamp - startTime.getTime();
+		console.log('当前时间:', new Date(currentTime).toISOString(), 
+		            '开始时间:', startTime.toISOString(),
+		            '过期时间:', new Date(timestamp).toISOString());
+		console.log('已过时间(毫秒):', elapsedTime, 
+		            '总时间(毫秒):', totalTime,
+		            '时间百分比:', (elapsedTime/totalTime).toFixed(4));
+
+		// 计算已用流量（基于时间比例）
+		let usedBytes = 0;
+		if (elapsedTime > 0 && totalTime > 0) {
+			const elapsedPercent = elapsedTime / totalTime;
+			// 确保不超过总流量
+			usedBytes = Math.floor(totalBytes * Math.min(elapsedPercent, 1));
+		} 
+
+		// 剩余流量
+		let remainBytes = totalBytes - usedBytes;
+
+		// 确保不会出现负值
+		if (usedBytes < 0) usedBytes = 0;
+		if (remainBytes < 0) remainBytes = 0;
+
+		console.log('已用流量(字节):', usedBytes, 
+		            '已用流量(GB):', (usedBytes / (1024*1024*1024)).toFixed(2),
+		            '剩余流量(GB):', (remainBytes / (1024*1024*1024)).toFixed(2));
+
+		// 计算过期时间（秒）
 		let expire = Math.floor(timestamp / 1000);
+		console.log('过期时间(秒):', expire, '过期日期:', new Date(expire * 1000).toISOString());
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
 
 		// 特殊处理：对KV和特定路径的请求直接转发到KV函数
@@ -218,7 +255,7 @@ export default {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${total}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
 			} else if (订阅格式 == 'clash') {
@@ -241,7 +278,7 @@ export default {
 						headers: {
 							"content-type": "text/plain; charset=utf-8",
 							"Profile-Update-Interval": `${SUBUpdateTime}`,
-							"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${total}; expire=${expire}`,
+							"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 						}
 					});
 					//throw new Error(`Error fetching subConverterUrl: ${subConverterResponse.status} ${subConverterResponse.statusText}`);
@@ -253,7 +290,7 @@ export default {
 						"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}`,
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${total}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 					},
 				});
 			} catch (error) {
@@ -261,7 +298,7 @@ export default {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${UD}; download=${UD}; total=${total}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
 			}
@@ -1147,7 +1184,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 										<div class="editor-container">
 											${hasKV ? `
 											<textarea class="editor form-control" 
-												placeholder="${decodeURIComponent(atob('TElOSyVFNyVBNCVCQSVFNCVCRSU4QiVFRiVCQyU4OCVFNCVCOCU4MCVFOCVBMSU4QyVFNCVCOCU4MCVFNCVCOCVBQSVFOCU4QSU4MiVFNyU4MiVCOSVFOSU5MyVCRSVFNiU4RSVBNSVFNSU4RCVCMyVFNSU4RiVBRiVFRiVCQyU4OSVFRiVCQyU5QQp2bGVzcyUzQSUyRiUyRjI0NmFhNzk1LTA2MzctNGY0Yy04ZjY0LTJjOGZiMjRjMWJhZCU0MDEyNy4wLjAuMSUzQTEyMzQlM0ZlbmNyeXB0aW9uJTNEbm9uZSUyNnNlY3VyaXR5JTNEdGxzJTI2c25pJTNEVEcuQ01MaXVzc3NzLmxvc2V5b3VyaXAuY29tJTI2YWxsb3dJbnNlY3VyZSUzRDElMjZ0eXBlJTNEd3MlMjZob3N0JTNEVEcuQ01MaXVzc3NzLmxvc2V5b3VyaXAuY29tJTI2cGF0aCUzRCUyNTJGJTI1M0ZlZCUyNTNEMjU2MCUyM0NGbmF0CnRyb2phbiUzQSUyRiUyRmFhNmRkZDJmLWQxY2YtNGE1Mi1iYTFiLTI2NDBjNDFhNzg1NiU0MDIxOC4xOTAuMjMwLjIwNyUzQTQxMjg4JTNGc2VjdXJpdHklM0R0bHMlMjZzbmklM0RoazEyLmJpbGliaWxpLmNvbSUyNmFsbG93SW5zZWN1cmUlM0QxJTI2dHlwZSUzRHRjcCUyNmhlYWRlclR5cGUlM0Rub25lJTIzSEsKc3MlM0ElMkYlMkZZMmhoWTJoaE1qQXRhV1YwWmkxd2IyeDVNVE13TlRveVJYUlFjVzQyU0ZscVZVNWpTRzlvVEdaVmNFWlJkMjVtYWtORFVUVnRhREZ0U21SRlRVTkNkV04xVjFvNVVERjFaR3RTUzBodVZuaDFielUxYXpGTFdIb3lSbTgyYW5KbmRERTRWelkyYjNCMGVURmxOR0p0TVdwNlprTm1RbUklMjUzRCU0MDg0LjE5LjMxLjYzJTNBNTA4NDElMjNERQoKCiVFOCVBRSVBMiVFOSU5OCU4NSVFOSU5MyVCRSVFNiU4RSVBNSVFNyVBNCVCQSVFNCVCRSU4QiVFRiVCQyU4OCVFNCVCOCU4MCVFOCVBMSU4QyVFNCVCOCU4MCVFNiU5RCVBMSVFOCVBRSVBMiVFOSU5OCU4NSVFOSU5MyVCRSVFNiU4RSVBNSVFNSU4RCVCMyVFNSU4RiVBRiVFRiVCQyU4OSVFRiVCQyU5QQpodHRwcyUzQSUyRiUyRnN1Yi54Zi5mcmVlLmhyJTJGYXV0bw=='))}"
+												placeholder="${decodeURIComponent(atob('TElOSyVFNyVBNCVCQSVFNCVCRSU4QiVFRiVCQyU4OCVFNCVCOCU4MCVFOCVBMSU4QyVFNCVCOCU4MCVFNiU5RCVBMSVFOCVBRSVBMiVFOSU5OCU4NSVFOSU5MyVCRSVFNiU4RSVBNSVFNSU4RCVCMyVFNSU4RiVBRiVFRiVCQyU4OSVFRiVCQyU5QQp2bGVzcyUzQSUyRiUyRjI0NmFhNzk1LTA2MzctNGY0Yy04ZjY0LTJjOGZiMjRjMWJhZCU0MDEyNy4wLjAuMSUzQTEyMzQlM0ZlbmNyeXB0aW9uJTNEbm9uZSUyNnNlY3VyaXR5JTNEdGxzJTI2c25pJTNEVEcuQ01MaXVzc3NzLmxvc2V5b3VyaXAuY29tJTI2YWxsb3dJbnNlY3VyZSUzRDElMjZ0eXBlJTNEd3MlMjZob3N0JTNEVEcuQ01MaXVzc3NzLmxvc2V5b3VyaXAuY29tJTI2cGF0aCUzRCUyNTJGJTI1M0ZlZCUyNTNEMjU2MCUyM0NGbmF0CnRyb2phbiUzQSUyRiUyRmFhNmRkZDJmLWQxY2YtNGE1Mi1iYTFiLTI2NDBjNDFhNzg1NiU0MDIxOC4xOTAuMjMwLjIwNyUzQTQxMjg4JTNGc2VjdXJpdHklM0R0bHMlMjZzbmklM0RoazEyLmJpbGliaWxpLmNvbSUyNmFsbG93SW5zZWN1cmUlM0QxJTI2dHlwZSUzRHRjcCUyNmhlYWRlclR5cGUlM0Rub25lJTIzSEsKc3MlM0ElMkYlMkZZMmhoWTJoaE1qQXRhV1YwWmkxd2IyeDVNVE13TlRveVJYUlFjVzQyU0ZscVZVNWpTRzlvVEdaVmNFWlJkMjVtYWtORFVUVnRhREZ0U21SRlRVTkNkV04xVjFvNVVERjFaR3RTUzBodVZuaDFielUxYXpGTFdIb3lSbTgyYW5KbmRERTRWelkyYjNCMGVURmxOR0p0TVdwNlprTm1RbUklMjUzRCU0MDg0LjE5LjMxLjYzJTNBNTA4NDElMjNERQoKCiVFOCVBRSVBMiVFOSU5OCU4NSVFOSU5MyVCRSVFNiU4RSVBNSVFNyVBNCVCQSVFNCVCRSU4QiVFRiVCQyU4OCVFNCVCOCU4MCVFOCVBMSU4QyVFNCVCOCU4MCVFNiU5RCVBMSVFOCVBRSVBMiVFOSU5OCU4NSVFOSU5MyVCRSVFNiU4RSVBNSVFNSU4RCVCMyVFNSU4RiVBRiVFRiVCQyU4OSVFRiVCQyU5QQpodHRwcyUzQSUyRiUyRnN1Yi54Zi5mcmVlLmhyJTJGYXV0bw=='))}"
 												id="content">${content}</textarea>
 											<div class="mt-3 d-flex align-items-center">
 												<button class="btn btn-success" onclick="saveContent(this)">保存</button>
