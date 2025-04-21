@@ -531,80 +531,133 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 				// 检查是否为流量参数更新请求
 				if (url.searchParams.has('updateTraffic')) {
 					try {
+						console.log('收到流量参数更新请求');
 						// 获取Content-Type头
 						const contentType = request.headers.get('Content-Type') || '';
+						console.log('请求Content-Type:', contentType);
+						
+						// 克隆请求以备多次读取
+						const clonedRequest = request.clone();
+						const requestText = await clonedRequest.text();
+						console.log('原始请求数据:', requestText);
+						
 						let data;
 						
-						// 根据Content-Type选择不同的解析方法
-						if (contentType.includes('application/json')) {
-							// 直接使用json()方法解析JSON
-							try {
-								data = await request.json();
-								console.log('JSON解析成功:', data);
-							} catch (jsonError) {
-								console.error('JSON解析失败:', jsonError);
-								// 如果json()方法失败，尝试手动解析
-								const text = await request.text();
-								console.log('尝试手动解析JSON, 收到的数据:', text);
-								try {
-									data = JSON.parse(text);
-									console.log('手动JSON解析成功:', data);
-								} catch (parseError) {
-									console.error('手动解析JSON失败:', parseError);
-									return new Response(JSON.stringify({
-										success: false, 
-										message: "无效的JSON格式",
-										error: parseError.message,
-										receivedData: text.substring(0, 100) // 仅记录前100个字符用于调试
-									}), {
-										status: 400,
-										headers: { "Content-Type": "application/json" }
-									});
-								}
-							}
-						} else {
-							// 对于其他Content-Type，尝试解析文本
-							const text = await request.text();
-							console.log('非JSON Content-Type, 收到的数据:', text);
-							try {
-								data = JSON.parse(text);
-								console.log('尽管Content-Type不是application/json，但成功解析为JSON:', data);
-							} catch (parseError) {
-								console.error('解析数据失败:', parseError);
-								return new Response(JSON.stringify({
-									success: false, 
-									message: "无效的数据格式，请确保发送JSON数据并设置正确的Content-Type",
-									error: parseError.message,
-									receivedData: text.substring(0, 100) // 仅记录前100个字符用于调试
-								}), {
-									status: 400,
-									headers: { "Content-Type": "application/json" }
-								});
-							}
+						// 尝试解析JSON数据
+						try {
+							data = JSON.parse(requestText);
+							console.log('成功解析JSON数据:', data);
+						} catch (parseError) {
+							console.error('JSON解析失败:', parseError);
+							return new Response(JSON.stringify({
+								success: false, 
+								message: "无效的JSON格式",
+								error: parseError.message,
+								receivedData: requestText.substring(0, 100) // 仅记录前100个字符用于调试
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
+						
+						// 数据验证
+						if (!data) {
+							console.error('未收到有效数据');
+							return new Response(JSON.stringify({
+								success: false,
+								message: "未收到有效数据"
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
+						
+						// 验证total值
+						if (data.total === undefined) {
+							console.error('未提供total值');
+							return new Response(JSON.stringify({
+								success: false,
+								message: "未提供总流量值"
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
+						
+						// 验证timestamp值
+						if (data.timestamp === undefined) {
+							console.error('未提供timestamp值');
+							return new Response(JSON.stringify({
+								success: false,
+								message: "未提供过期时间戳"
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
+						
+						// 范围验证
+						if (parseInt(data.total) <= 0 || parseInt(data.total) > 10000) {
+							console.error('total值超出合理范围:', data.total);
+							return new Response(JSON.stringify({
+								success: false,
+								message: "总流量值超出合理范围(1-10000 TB)"
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
+						
+						const now = Date.now();
+						if (parseInt(data.timestamp) < now) {
+							console.error('过期时间戳小于当前时间:', data.timestamp, '当前时间:', now);
+							return new Response(JSON.stringify({
+								success: false,
+								message: "过期时间不能早于当前时间"
+							}), {
+								status: 400,
+								headers: { "Content-Type": "application/json" }
+							});
 						}
 						
 						// 更新流量参数
-						console.log('准备更新流量参数:', data);
-						if (data && data.total !== undefined) {
-							await env.KV.put('TOTAL', data.total.toString());
-							console.log('更新总流量为:', data.total);
-						}
-						if (data && data.timestamp !== undefined) {
-							await env.KV.put('TIMESTAMP', data.timestamp.toString());
-							console.log('更新过期时间戳为:', data.timestamp);
-						}
+						console.log('准备更新流量参数 - 总流量:', data.total, '过期时间戳:', data.timestamp);
 						
-						// 返回成功响应
-						return new Response(JSON.stringify({
-							success: true, 
-							message: "流量参数更新成功",
-							updatedData: {
-								total: data?.total,
-								timestamp: data?.timestamp
-							}
-						}), {
-							headers: { "Content-Type": "application/json" }
-						});
+						try {
+							// 转为字符串存储避免精度问题
+							await env.KV.put('TOTAL', String(data.total));
+							console.log('总流量更新成功');
+							
+							await env.KV.put('TIMESTAMP', String(data.timestamp));
+							console.log('过期时间戳更新成功');
+							
+							// 读取更新后的值进行验证
+							const newTotal = await env.KV.get('TOTAL');
+							const newTimestamp = await env.KV.get('TIMESTAMP');
+							console.log('验证更新后的值 - 总流量:', newTotal, '过期时间戳:', newTimestamp);
+							
+							// 返回成功响应
+							return new Response(JSON.stringify({
+								success: true, 
+								message: "流量参数更新成功",
+								updatedData: {
+									total: newTotal,
+									timestamp: newTimestamp
+								}
+							}), {
+								headers: { "Content-Type": "application/json" }
+							});
+						} catch (kvError) {
+							console.error('KV存储操作失败:', kvError);
+							return new Response(JSON.stringify({
+								success: false,
+								message: "存储操作失败",
+								error: kvError.message
+							}), {
+								status: 500,
+								headers: { "Content-Type": "application/json" }
+							});
+						}
 					} catch (error) {
 						console.error('处理流量参数请求出错:', error);
 						return new Response(JSON.stringify({
@@ -649,14 +702,35 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		if (hasKV) {
 			try {
 				const kvTotal = await env.KV.get('TOTAL');
-				if (kvTotal) currentTotal = parseInt(kvTotal);
+				if (kvTotal) {
+					console.log('从KV读取到总流量值:', kvTotal);
+					currentTotal = parseInt(kvTotal);
+				} else {
+					console.log('KV中未找到总流量值，使用默认值:', currentTotal);
+				}
 				
 				const kvTimestamp = await env.KV.get('TIMESTAMP');
-				if (kvTimestamp) currentTimestamp = parseInt(kvTimestamp);
+				if (kvTimestamp) {
+					console.log('从KV读取到过期时间戳:', kvTimestamp);
+					currentTimestamp = parseInt(kvTimestamp);
+				} else {
+					console.log('KV中未找到过期时间戳，使用默认值:', currentTimestamp);
+				}
 			} catch (error) {
 				console.error('读取流量参数时发生错误:', error);
 			}
 		}
+
+		// 格式化日期为YYYY-MM-DD
+		const formatDate = (timestamp) => {
+			const date = new Date(timestamp);
+			const year = date.getFullYear();
+			const month = String(date.getMonth() + 1).padStart(2, '0');
+			const day = String(date.getDate()).padStart(2, '0');
+			return `${year}-${month}-${day}`;
+		};
+
+		const expireDateFormatted = formatDate(currentTimestamp);
 
 		const html = `
 			<!DOCTYPE html>
@@ -975,7 +1049,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 											</div>
 											<div class="col-md-6">
 												<label for="expireDate" class="form-label">过期日期</label>
-												<input type="date" class="form-control" id="expireDate" value="${new Date(currentTimestamp).toISOString().split('T')[0]}">
+												<input type="date" class="form-control" id="expireDate" value="${expireDateFormatted}">
 											</div>
 											<div class="col-12">
 												<button type="button" class="btn btn-primary" onclick="saveTrafficSettings()">保存流量设置</button>
@@ -1256,16 +1330,16 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					const statusElem = document.getElementById('trafficStatus');
 					if (statusElem) statusElem.textContent = '保存中...';
 					
-					// 准备数据
+					// 准备数据 - 确保使用字符串格式避免科学计数法问题
 					const data = {
 						total: parseInt(totalTraffic),
 						timestamp: timestamp
 					};
 					
-					// 转换为JSON字符串并确保格式正确
+					// 转换为JSON字符串
 					const jsonData = JSON.stringify(data);
 					
-					console.log('Sending data:', jsonData);
+					console.log('准备发送流量设置数据:', jsonData);
 					
 					// 发送请求保存设置
 					fetch(window.location.href + '?updateTraffic=1', {
@@ -1277,11 +1351,12 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						body: jsonData
 					})
 					.then(function(response) {
-						console.log('Response status:', response.status);
+						console.log('流量设置响应状态:', response.status);
 						return response.text().then(function(text) {
-							console.log('Response text:', text);
+							console.log('流量设置响应内容:', text);
 							// 检查响应文本是否为空
 							if (!text || text.trim() === '') {
+								console.error('服务器返回了空响应');
 								return { success: false, message: '服务器返回了空响应' };
 							}
 							
@@ -1295,9 +1370,11 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					})
 					.then(function(data) {
 						if (data.success) {
+							console.log('流量设置更新成功:', data);
 							showToast('流量设置已更新');
 							if (statusElem) statusElem.textContent = '已更新 ' + new Date().toLocaleString();
 						} else {
+							console.error('流量设置更新失败:', data);
 							showToast('更新失败: ' + (data.message || '未知错误'), 'danger');
 							if (statusElem) statusElem.textContent = '更新失败 ' + new Date().toLocaleString();
 						}
@@ -1319,16 +1396,55 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					if (totalTrafficInput) {
 						// 保存原始值
 						var originalValue = parseFloat(totalTrafficInput.value);
+						console.log('原始流量值:', originalValue);
 						
-						// 使用toFixed确保显示为普通数字而非科学计数法
-						totalTrafficInput.value = originalValue.toFixed(0);
+						if (isNaN(originalValue)) {
+							console.error('流量值不是有效的数字:', totalTrafficInput.value);
+							totalTrafficInput.value = '99'; // 设置默认值
+						} else if (originalValue <= 0) {
+							console.warn('流量值不能为负数或零:', originalValue);
+							totalTrafficInput.value = '1';
+						} else if (originalValue > 10000) {
+							console.warn('流量值过大:', originalValue);
+							totalTrafficInput.value = '10000';
+						} else {
+							// 使用toFixed确保显示为普通数字而非科学计数法
+							totalTrafficInput.value = originalValue.toFixed(0);
+						}
 						
 						// 添加事件监听器，防止输入框内容被自动转为科学计数法
 						totalTrafficInput.addEventListener('change', function() {
-							if (!isNaN(parseFloat(this.value))) {
-								this.value = parseFloat(this.value).toFixed(0);
+							var value = parseFloat(this.value);
+							if (isNaN(value)) {
+								console.error('输入的流量值不是有效的数字:', this.value);
+								this.value = '99';
+							} else if (value <= 0) {
+								console.warn('输入的流量值不能为负数或零:', value);
+								this.value = '1';
+							} else if (value > 10000) {
+								console.warn('输入的流量值过大:', value);
+								this.value = '10000';
+							} else {
+								this.value = value.toFixed(0);
 							}
 						});
+					}
+					
+					// 检查并确保过期时间不早于当前时间
+					var expireDateInput = document.getElementById('expireDate');
+					if (expireDateInput) {
+						var today = new Date();
+						today.setHours(0, 0, 0, 0);
+						var selectedDate = new Date(expireDateInput.value);
+						
+						if (selectedDate < today) {
+							console.warn('过期日期早于当前日期，将设置为当前日期');
+							var formattedToday = today.toISOString().split('T')[0];
+							expireDateInput.value = formattedToday;
+						}
+						
+						// 确保最早可选择的日期是今天
+						expireDateInput.min = today.toISOString().split('T')[0];
 					}
 				});
 				</script>
