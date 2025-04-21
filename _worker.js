@@ -59,10 +59,20 @@ export default {
 		if (env.KV) {
 			try {
 				const kvTotal = await env.KV.get('TOTAL');
-				if (kvTotal) total = parseInt(kvTotal);
+				if (kvTotal) {
+					console.log('从KV读取到总流量值:', kvTotal);
+					total = parseInt(kvTotal);
+				} else {
+					console.log('KV中未找到总流量值，使用默认值:', total);
+				}
 				
 				const kvTimestamp = await env.KV.get('TIMESTAMP');
-				if (kvTimestamp) timestamp = parseInt(kvTimestamp);
+				if (kvTimestamp) {
+					console.log('从KV读取到过期时间戳:', kvTimestamp);
+					timestamp = parseInt(kvTimestamp);
+				} else {
+					console.log('KV中未找到过期时间戳，使用默认值:', timestamp);
+				}
 			} catch (error) {
 				console.error('读取流量参数时发生错误:', error);
 			}
@@ -75,6 +85,17 @@ export default {
 		let UD = Math.floor(totalBytes * (1 - timePercent)); // 已使用流量
 		let expire = Math.floor(timestamp / 1000);
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
+
+		// 特殊处理：对KV和特定路径的请求直接转发到KV函数
+		if (env.KV && (
+			// 检查是否为流量参数更新请求
+			(request.method === "POST" && url.searchParams.has('updateTraffic')) ||
+			// 检查是否为编辑页面请求
+			(userAgent.includes('mozilla') && !url.search)
+		)) {
+			console.log('检测到KV相关请求，转发到KV函数');
+			return await KV(request, env, 'LINK.txt', 访客订阅);
+		}
 
 		if (!([mytoken, fakeToken, 访客订阅].includes(token) || url.pathname == ("/" + mytoken) || url.pathname.includes("/" + mytoken + "?"))) {
 			if (TG == 1 && url.pathname !== "/" && url.pathname !== "/favicon.ico") await sendMessage(`#异常访问 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgent}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
@@ -89,12 +110,18 @@ export default {
 		} else {
 			if (env.KV) {
 				await 迁移地址列表(env, 'LINK.txt');
+				// 注释掉下面的部分，因为已经在前面处理过KV相关的请求
+				/*
 				if (userAgent.includes('mozilla') && !url.search) {
 					await sendMessage(`#编辑订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
 					return await KV(request, env, 'LINK.txt', 访客订阅);
 				} else {
 					MainData = await env.KV.get('LINK.txt') || MainData;
 				}
+				*/
+				
+				// 只获取节点列表数据
+				MainData = await env.KV.get('LINK.txt') || MainData;
 			} else {
 				MainData = env.LINK || MainData;
 				if (env.LINKSUB) urls = await ADD(env.LINKSUB);
@@ -523,6 +550,11 @@ async function 迁移地址列表(env, txt = 'ADD.txt') {
 
 async function KV(request, env, txt = 'ADD.txt', guest) {
 	const url = new URL(request.url);
+	console.log('KV函数收到请求，URL:', url.toString());
+	console.log('请求方法:', request.method);
+	console.log('请求头:', JSON.stringify([...request.headers]));
+	console.log('查询参数:', JSON.stringify([...url.searchParams]));
+	
 	try {
 		// POST请求处理
 		if (request.method === "POST") {
@@ -530,16 +562,16 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 			try {
 				// 检查是否为流量参数更新请求
 				if (url.searchParams.has('updateTraffic')) {
+					console.log('检测到updateTraffic参数，处理流量参数更新请求');
+					// 立即克隆请求体，以便后续处理
+					const clonedRequest = request.clone();
+					const requestText = await clonedRequest.text();
+					console.log('收到updateTraffic请求，原始数据:', requestText);
+					
 					try {
-						console.log('收到流量参数更新请求');
 						// 获取Content-Type头
 						const contentType = request.headers.get('Content-Type') || '';
 						console.log('请求Content-Type:', contentType);
-						
-						// 克隆请求以备多次读取
-						const clonedRequest = request.clone();
-						const requestText = await clonedRequest.text();
-						console.log('原始请求数据:', requestText);
 						
 						let data;
 						
@@ -556,7 +588,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								receivedData: requestText.substring(0, 100) // 仅记录前100个字符用于调试
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "JSON解析失败" 
+								}
 							});
 						}
 						
@@ -568,7 +603,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "未收到有效数据"
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "未收到有效数据" 
+								}
 							});
 						}
 						
@@ -580,7 +618,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "未提供总流量值"
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "未提供total值" 
+								}
 							});
 						}
 						
@@ -592,7 +633,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "未提供过期时间戳"
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "未提供timestamp值" 
+								}
 							});
 						}
 						
@@ -604,7 +648,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "总流量值超出合理范围(1-10000 TB)"
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "total值超出范围" 
+								}
 							});
 						}
 						
@@ -616,7 +663,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "过期时间不能早于当前时间"
 							}), {
 								status: 400,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "时间戳无效" 
+								}
 							});
 						}
 						
@@ -626,10 +676,10 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						try {
 							// 转为字符串存储避免精度问题
 							await env.KV.put('TOTAL', String(data.total));
-							console.log('总流量更新成功');
+							console.log('总流量更新成功:', data.total);
 							
 							await env.KV.put('TIMESTAMP', String(data.timestamp));
-							console.log('过期时间戳更新成功');
+							console.log('过期时间戳更新成功:', data.timestamp);
 							
 							// 读取更新后的值进行验证
 							const newTotal = await env.KV.get('TOTAL');
@@ -637,15 +687,22 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							console.log('验证更新后的值 - 总流量:', newTotal, '过期时间戳:', newTimestamp);
 							
 							// 返回成功响应
-							return new Response(JSON.stringify({
+							const successResponse = JSON.stringify({
 								success: true, 
 								message: "流量参数更新成功",
 								updatedData: {
 									total: newTotal,
 									timestamp: newTimestamp
 								}
-							}), {
-								headers: { "Content-Type": "application/json" }
+							});
+							
+							console.log('返回成功响应:', successResponse);
+							
+							return new Response(successResponse, {
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "流量更新成功" 
+								}
 							});
 						} catch (kvError) {
 							console.error('KV存储操作失败:', kvError);
@@ -655,26 +712,33 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								error: kvError.message
 							}), {
 								status: 500,
-								headers: { "Content-Type": "application/json" }
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "KV存储失败" 
+								}
 							});
 						}
 					} catch (error) {
 						console.error('处理流量参数请求出错:', error);
 						return new Response(JSON.stringify({
-							success: false,
-							message: "处理请求失败",
-							error: error.message
-						}), {
-							status: 500,
-							headers: { "Content-Type": "application/json" }
-						});
+								success: false,
+								message: "处理请求失败",
+								error: error.message
+							}), {
+								status: 500,
+								headers: { 
+									"Content-Type": "application/json",
+									"X-Debug-Message": "处理请求失败" 
+								}
+							});
 					}
+				} else {
+					// 常规节点链接更新
+					console.log('处理常规节点链接更新请求');
+					const content = await request.text();
+					await env.KV.put(txt, content);
+					return new Response("保存成功");
 				}
-				
-				// 常规节点链接更新
-				const content = await request.text();
-				await env.KV.put(txt, content);
-				return new Response("保存成功");
 				
 			} catch (error) {
 				console.error('保存KV时发生错误:', error);
@@ -1341,8 +1405,17 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					
 					console.log('准备发送流量设置数据:', jsonData);
 					
+					// 构造请求URL，确保不包含其他查询参数
+					const currentUrl = new URL(window.location.href);
+					// 移除所有现有的查询参数
+					const cleanUrl = currentUrl.origin + currentUrl.pathname;
+					// 添加updateTraffic参数
+					const requestUrl = cleanUrl + '?updateTraffic=1';
+					
+					console.log('发送流量设置请求到URL:', requestUrl);
+					
 					// 发送请求保存设置
-					fetch(window.location.href + '?updateTraffic=1', {
+					fetch(requestUrl, {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json',
