@@ -1165,23 +1165,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							opacity: 1;
 						}
 						.github-link {
-							display: inline-flex;
-							align-items: center;
-							gap: 8px;
-							padding: 8px 16px;
-							background: #24292e;
-							color: #fff !important;
-							border-radius: 6px;
-							text-decoration: none;
-							font-weight: 500;
-							transition: all 0.3s ease;
-						}
-						.github-link:hover {
-							background: #2c3238;
-							transform: translateY(-2px);
-						}
-						.github-link i {
-							font-size: 18px;
+							display: none;
 						}
 						@media (max-width: 768px) {
 							.card-body {
@@ -1267,44 +1251,32 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}','guest_0')">自适应订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_0')">二维码</button>
 														</div>
-														<div id="guest_0" class="qrcode-container"></div>
 													</div>
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}&b64','guest_1')">Base64订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_1')">二维码</button>
 														</div>
-														<div id="guest_1" class="qrcode-container"></div>
 													</div>
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}&clash','guest_2')">Clash订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_2')">二维码</button>
 														</div>
-														<div id="guest_2" class="qrcode-container"></div>
 													</div>
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}&sb','guest_3')">SingBox订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_3')">二维码</button>
 														</div>
-														<div id="guest_3" class="qrcode-container"></div>
 													</div>
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}&surge','guest_4')">Surge订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_4')">二维码</button>
 														</div>
-														<div id="guest_4" class="qrcode-container"></div>
 													</div>
 													<div class="col-md-4 col-sm-6">
 														<div class="subscription-link">
 															<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/sub?token=${guest}&loon','guest_5')">Loon订阅</a>
-															<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('guest_5')">二维码</button>
 														</div>
-														<div id="guest_5" class="qrcode-container"></div>
 													</div>
 												</div>
 											</div>
