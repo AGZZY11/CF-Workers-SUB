@@ -9,6 +9,7 @@ let FileName = 'CF-Workers-SUB';
 let SUBUpdateTime = 6; //自定义订阅更新时间，单位小时
 let total = 99;//TB
 let timestamp = 4102329600000;//2099-12-31
+let subscriptionDays = 30; //订阅周期天数，默认30天
 
 //节点链接 + 订阅链接
 let MainData = `
@@ -73,6 +74,14 @@ export default {
 				} else {
 					console.log('KV中未找到过期时间戳，使用默认值:', timestamp);
 				}
+				
+				const kvSubscriptionDays = await env.KV.get('SUBSCRIPTION_DAYS');
+				if (kvSubscriptionDays) {
+					console.log('从KV读取到订阅周期天数:', kvSubscriptionDays);
+					subscriptionDays = parseInt(kvSubscriptionDays);
+				} else {
+					console.log('KV中未找到订阅周期天数，使用默认值:', subscriptionDays);
+				}
 			} catch (error) {
 				console.error('读取流量参数时发生错误:', error);
 			}
@@ -83,21 +92,23 @@ export default {
 		const totalBytes = total * 1099511627776; // 转换为字节 (TB to bytes)
 		console.log('总流量(字节):', totalBytes, '总流量(TB):', total);
 
-		// 计算已使用流量 - 基于已经过去的时间比例
+		// 计算已使用流量 - 使用固定的起始日期
 		const currentTime = Date.now();
-		// 使用当前时间减去30天作为订阅开始时间（假设一个订阅周期为一个月）
-		const startTime = new Date();
-		startTime.setDate(startTime.getDate() - 30); // 默认30天前作为起始时间
-		startTime.setHours(0, 0, 0, 0); // 设置为当天0点
 
-		const elapsedTime = currentTime - startTime.getTime(); 
-		const totalTime = timestamp - startTime.getTime();
-		console.log('当前时间:', new Date(currentTime).toISOString(), 
-		            '开始时间:', startTime.toISOString(),
+		// 从过期时间计算固定的起始时间（假设订阅周期为30天）
+		// 注意: 使用过期时间减去固定天数，确保每次计算使用相同的起始日期
+		const fixedStartTime = timestamp - (subscriptionDays * 24 * 60 * 60 * 1000); // 过期时间减去订阅周期
+
+		console.log('固定起始时间:', new Date(fixedStartTime).toISOString(), 
+		            '当前时间:', new Date(currentTime).toISOString(),
 		            '过期时间:', new Date(timestamp).toISOString());
-		console.log('已过时间(毫秒):', elapsedTime, 
-		            '总时间(毫秒):', totalTime,
-		            '时间百分比:', (elapsedTime/totalTime).toFixed(4));
+
+		// 计算已经过去的时间和总订阅时间
+		const elapsedTime = currentTime - fixedStartTime; 
+		const totalTime = timestamp - fixedStartTime;
+		console.log('订阅总天数:', (totalTime / (24 * 60 * 60 * 1000)).toFixed(1), '天');
+		console.log('已过天数:', (elapsedTime / (24 * 60 * 60 * 1000)).toFixed(1), '天');
+		console.log('时间百分比:', (elapsedTime/totalTime).toFixed(4));
 
 		// 计算已用流量（基于时间比例）
 		let usedBytes = 0;
@@ -115,8 +126,8 @@ export default {
 		if (remainBytes < 0) remainBytes = 0;
 
 		console.log('已用流量(字节):', usedBytes, 
-		            '已用流量(GB):', (usedBytes / (1024*1024*1024)).toFixed(2),
-		            '剩余流量(GB):', (remainBytes / (1024*1024*1024)).toFixed(2));
+		            '已用流量(TB):', (usedBytes / 1099511627776).toFixed(2),
+		            '剩余流量(TB):', (remainBytes / 1099511627776).toFixed(2));
 
 		// 计算过期时间（秒）
 		let expire = Math.floor(timestamp / 1000);
@@ -718,10 +729,17 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							await env.KV.put('TIMESTAMP', String(data.timestamp));
 							console.log('过期时间戳更新成功:', data.timestamp);
 							
+							// 保存订阅周期天数
+							if (data.subscriptionDays !== undefined) {
+								await env.KV.put('SUBSCRIPTION_DAYS', String(data.subscriptionDays));
+								console.log('订阅周期天数更新成功:', data.subscriptionDays);
+							}
+							
 							// 读取更新后的值进行验证
 							const newTotal = await env.KV.get('TOTAL');
 							const newTimestamp = await env.KV.get('TIMESTAMP');
-							console.log('验证更新后的值 - 总流量:', newTotal, '过期时间戳:', newTimestamp);
+							const newSubscriptionDays = await env.KV.get('SUBSCRIPTION_DAYS');
+							console.log('验证更新后的值 - 总流量:', newTotal, '过期时间戳:', newTimestamp, '订阅周期天数:', newSubscriptionDays);
 							
 							// 返回成功响应
 							const successResponse = JSON.stringify({
@@ -729,7 +747,8 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 								message: "流量参数更新成功",
 								updatedData: {
 									total: newTotal,
-									timestamp: newTimestamp
+									timestamp: newTimestamp,
+									subscriptionDays: newSubscriptionDays
 								}
 							});
 							
@@ -1141,16 +1160,23 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 									</div>
 									<div class="card-body">
 										<div class="row g-3">
-											<div class="col-md-6">
+											<div class="col-md-4">
 												<label for="totalTraffic" class="form-label">总流量 (TB)</label>
 												<div class="input-group mb-3">
 													<input type="number" class="form-control" id="totalTraffic" value="${currentTotal}">
 													<span class="input-group-text">TB</span>
 												</div>
 											</div>
-											<div class="col-md-6">
+											<div class="col-md-4">
 												<label for="expireDate" class="form-label">过期日期</label>
 												<input type="date" class="form-control" id="expireDate" value="${expireDateFormatted}">
+											</div>
+											<div class="col-md-4">
+												<label for="subscriptionDays" class="form-label">订阅周期天数</label>
+												<div class="input-group mb-3">
+													<input type="number" class="form-control" id="subscriptionDays" value="${subscriptionDays}" min="1" max="365">
+													<span class="input-group-text">天</span>
+												</div>
 											</div>
 											<div class="col-12">
 												<button type="button" class="btn btn-primary" onclick="saveTrafficSettings()">保存流量设置</button>
@@ -1409,6 +1435,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 				function saveTrafficSettings() {
 					const totalTraffic = document.getElementById('totalTraffic').value;
 					const expireDate = document.getElementById('expireDate').value;
+					const subscriptionDays = document.getElementById('subscriptionDays').value;
 					
 					// 验证输入
 					if (!totalTraffic || isNaN(parseInt(totalTraffic)) || parseInt(totalTraffic) <= 0) {
@@ -1418,6 +1445,11 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					
 					if (!expireDate) {
 						showToast('请选择有效的过期日期', 'danger');
+						return;
+					}
+					
+					if (!subscriptionDays || isNaN(parseInt(subscriptionDays)) || parseInt(subscriptionDays) <= 0) {
+						showToast('请输入有效的订阅周期天数', 'danger');
 						return;
 					}
 					
@@ -1431,10 +1463,11 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					const statusElem = document.getElementById('trafficStatus');
 					if (statusElem) statusElem.textContent = '保存中...';
 					
-					// 准备数据 - 确保使用字符串格式避免科学计数法问题
+					// 准备数据
 					const data = {
 						total: parseInt(totalTraffic),
-						timestamp: timestamp
+						timestamp: timestamp,
+						subscriptionDays: parseInt(subscriptionDays)
 					};
 					
 					// 转换为JSON字符串
