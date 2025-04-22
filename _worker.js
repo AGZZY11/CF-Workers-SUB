@@ -1313,8 +1313,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 													<div class="d-flex align-items-center mb-2">
 														<div style="width: 100%">
 															<div class="d-flex justify-content-between mb-1">
-																<small>已用流量:</small>
-																<small>${(usedBytes / 1099511627776).toFixed(2)} TB</small>
+																<small>已用流量: ${(usedBytes / 1099511627776).toFixed(2)} TB</small>
 															</div>
 															<div class="progress" style="height: 8px">
 																<div class="progress-bar bg-info" role="progressbar" style="width: ${Math.min(100, (usedBytes / totalBytes) * 100).toFixed(2)}%" 
