@@ -89,6 +89,11 @@ export default {
 
 		// 计算流量信息 - 基于当前时间与过期时间的差值
 		// 如果没有从KV中获取设置，则使用默认值
+		console.log('开始计算流量信息 --------------');
+		console.log('当前时间:', new Date(Date.now()).toISOString());
+		console.log('过期时间戳:', timestamp, '对应日期:', new Date(timestamp).toISOString());
+		console.log('订阅周期天数:', subscriptionDays);
+
 		const totalBytes = total * 1099511627776; // 转换为字节 (TB to bytes)
 		console.log('总流量(字节):', totalBytes, '总流量(TB):', total);
 
@@ -96,34 +101,43 @@ export default {
 		const currentTime = Date.now();
 
 		// 从过期时间计算固定的起始时间（假设订阅周期为30天）
-		// 注意: 使用过期时间减去固定天数，确保每次计算使用相同的起始日期
-		const fixedStartTime = timestamp - (subscriptionDays * 24 * 60 * 60 * 1000); // 过期时间减去订阅周期
-
-		console.log('固定起始时间:', new Date(fixedStartTime).toISOString(), 
-		            '当前时间:', new Date(currentTime).toISOString(),
-		            '过期时间:', new Date(timestamp).toISOString());
+		const oneDayMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
+		const fixedStartTime = timestamp - (subscriptionDays * oneDayMs); // 过期时间减去订阅周期
+		console.log('固定起始时间计算: 过期时间戳', timestamp, '- (订阅周期', subscriptionDays, '* 一天毫秒数', oneDayMs, ') =', fixedStartTime);
+		console.log('固定起始时间:', new Date(fixedStartTime).toISOString());
+		console.log('当前时间:', new Date(currentTime).toISOString());
+		console.log('过期时间:', new Date(timestamp).toISOString());
 
 		// 计算已经过去的时间和总订阅时间
 		const elapsedTime = currentTime - fixedStartTime; 
 		const totalTime = timestamp - fixedStartTime;
-		console.log('订阅总天数:', (totalTime / (24 * 60 * 60 * 1000)).toFixed(1), '天');
-		console.log('已过天数:', (elapsedTime / (24 * 60 * 60 * 1000)).toFixed(1), '天');
-		console.log('时间百分比:', (elapsedTime/totalTime).toFixed(4));
+		console.log('总订阅天数:', (totalTime / oneDayMs).toFixed(2), '天');
+		console.log('已过天数:', (elapsedTime / oneDayMs).toFixed(2), '天');
+		console.log('时间百分比:', (elapsedTime/totalTime).toFixed(4), ' (', elapsedTime, '/', totalTime, ')');
 
 		// 计算已用流量（基于时间比例）
 		let usedBytes = 0;
 		if (elapsedTime > 0 && totalTime > 0) {
 			const elapsedPercent = elapsedTime / totalTime;
+			console.log('elapsedPercent =', elapsedPercent);
 			// 确保不超过总流量
 			usedBytes = Math.floor(totalBytes * Math.min(elapsedPercent, 1));
+			console.log('usedBytes = totalBytes *', Math.min(elapsedPercent, 1), '=', usedBytes);
 		} 
 
 		// 剩余流量
 		let remainBytes = totalBytes - usedBytes;
+		console.log('remainBytes = totalBytes - usedBytes =', totalBytes, '-', usedBytes, '=', remainBytes);
 
 		// 确保不会出现负值
-		if (usedBytes < 0) usedBytes = 0;
-		if (remainBytes < 0) remainBytes = 0;
+		if (usedBytes < 0) {
+			console.log('usedBytes < 0, 设为0');
+			usedBytes = 0;
+		}
+		if (remainBytes < 0) {
+			console.log('remainBytes < 0, 设为0');
+			remainBytes = 0;
+		}
 
 		console.log('已用流量(字节):', usedBytes, 
 		            '已用流量(TB):', (usedBytes / 1099511627776).toFixed(2),
@@ -132,6 +146,7 @@ export default {
 		// 计算过期时间（秒）
 		let expire = Math.floor(timestamp / 1000);
 		console.log('过期时间(秒):', expire, '过期日期:', new Date(expire * 1000).toISOString());
+		console.log('流量计算完成 --------------');
 		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
 
 		// 特殊处理：对KV和特定路径的请求直接转发到KV函数
@@ -266,7 +281,7 @@ export default {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
 			} else if (订阅格式 == 'clash') {
@@ -289,7 +304,7 @@ export default {
 						headers: {
 							"content-type": "text/plain; charset=utf-8",
 							"Profile-Update-Interval": `${SUBUpdateTime}`,
-							"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
+							"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 						}
 					});
 					//throw new Error(`Error fetching subConverterUrl: ${subConverterResponse.status} ${subConverterResponse.statusText}`);
@@ -301,7 +316,7 @@ export default {
 						"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}`,
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 					},
 				});
 			} catch (error) {
@@ -309,7 +324,7 @@ export default {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
 						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=${remainBytes}; download=${remainBytes}; total=${totalBytes}; expire=${expire}`,
+						"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
 			}
@@ -818,7 +833,8 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 		// 获取流量参数
 		let currentTotal = total / 1099511627776; // 转回TB单位
 		let currentTimestamp = timestamp;
-		
+		let currentSubscriptionDays = subscriptionDays;
+
 		if (hasKV) {
 			try {
 				const kvTotal = await env.KV.get('TOTAL');
@@ -835,6 +851,14 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					currentTimestamp = parseInt(kvTimestamp);
 				} else {
 					console.log('KV中未找到过期时间戳，使用默认值:', currentTimestamp);
+				}
+				
+				const kvSubscriptionDays = await env.KV.get('SUBSCRIPTION_DAYS');
+				if (kvSubscriptionDays) {
+					console.log('从KV读取到订阅周期天数:', kvSubscriptionDays);
+					currentSubscriptionDays = parseInt(kvSubscriptionDays);
+				} else {
+					console.log('KV中未找到订阅周期天数，使用默认值:', currentSubscriptionDays);
 				}
 			} catch (error) {
 				console.error('读取流量参数时发生错误:', error);
@@ -1174,7 +1198,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 											<div class="col-md-4">
 												<label for="subscriptionDays" class="form-label">订阅周期天数</label>
 												<div class="input-group mb-3">
-													<input type="number" class="form-control" id="subscriptionDays" value="${subscriptionDays}" min="1" max="365">
+													<input type="number" class="form-control" id="subscriptionDays" value="${currentSubscriptionDays}" min="1" max="365">
 													<span class="input-group-text">天</span>
 												</div>
 											</div>
