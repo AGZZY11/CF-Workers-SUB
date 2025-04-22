@@ -100,29 +100,44 @@ export default {
 		// 计算已使用流量 - 使用固定的起始日期
 		const currentTime = Date.now();
 
-		// 从过期时间计算固定的起始时间（假设订阅周期为30天）
+		// 从过期时间计算固定的起始时间（根据订阅周期天数）
 		const oneDayMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
-		const fixedStartTime = timestamp - (subscriptionDays * oneDayMs); // 过期时间减去订阅周期
+		let fixedStartTime = timestamp - (subscriptionDays * oneDayMs); // 过期时间减去订阅周期
+
+		// 确保起始时间不会超过当前时间（避免出现负值流量）
+		if (fixedStartTime > currentTime) {
+			console.log('警告：计算的起始时间晚于当前时间，将使用当前时间作为起始时间');
+			fixedStartTime = currentTime;
+		}
+
+		// 确保起始时间不会早于很久以前（避免异常大的已用流量）
+		const maxPastDays = 365; // 最多追溯一年
+		const minStartTime = currentTime - (maxPastDays * oneDayMs);
+		if (fixedStartTime < minStartTime) {
+			console.log('警告：计算的起始时间过早，将限制为最多一年前');
+			fixedStartTime = minStartTime;
+		}
+
 		console.log('固定起始时间计算: 过期时间戳', timestamp, '- (订阅周期', subscriptionDays, '* 一天毫秒数', oneDayMs, ') =', fixedStartTime);
 		console.log('固定起始时间:', new Date(fixedStartTime).toISOString());
 		console.log('当前时间:', new Date(currentTime).toISOString());
 		console.log('过期时间:', new Date(timestamp).toISOString());
 
 		// 计算已经过去的时间和总订阅时间
-		const elapsedTime = currentTime - fixedStartTime; 
-		const totalTime = timestamp - fixedStartTime;
+		const elapsedTime = Math.max(0, currentTime - fixedStartTime); // 确保不会出现负值
+		const totalTime = Math.max(oneDayMs, timestamp - fixedStartTime); // 确保总时间至少为一天
 		console.log('总订阅天数:', (totalTime / oneDayMs).toFixed(2), '天');
 		console.log('已过天数:', (elapsedTime / oneDayMs).toFixed(2), '天');
 		console.log('时间百分比:', (elapsedTime/totalTime).toFixed(4), ' (', elapsedTime, '/', totalTime, ')');
 
 		// 计算已用流量（基于时间比例）
 		let usedBytes = 0;
-		if (elapsedTime > 0 && totalTime > 0) {
-			const elapsedPercent = elapsedTime / totalTime;
+		if (totalTime > 0) { // 只要总时间大于0就计算
+			const elapsedPercent = Math.min(elapsedTime / totalTime, 1); // 限制比例最大为1（100%）
 			console.log('elapsedPercent =', elapsedPercent);
 			// 确保不超过总流量
-			usedBytes = Math.floor(totalBytes * Math.min(elapsedPercent, 1));
-			console.log('usedBytes = totalBytes *', Math.min(elapsedPercent, 1), '=', usedBytes);
+			usedBytes = Math.floor(totalBytes * elapsedPercent);
+			console.log('usedBytes = totalBytes *', elapsedPercent, '=', usedBytes);
 		} 
 
 		// 剩余流量
@@ -142,6 +157,13 @@ export default {
 		console.log('已用流量(字节):', usedBytes, 
 		            '已用流量(TB):', (usedBytes / 1099511627776).toFixed(2),
 		            '剩余流量(TB):', (remainBytes / 1099511627776).toFixed(2));
+
+		// 处理过期时间
+		// 如果过期时间已经过去，将其设置为当前时间后的一天
+		if (timestamp < currentTime) {
+			console.log('警告：过期时间已过去，将设置为当前时间后的一天');
+			timestamp = currentTime + oneDayMs;
+		}
 
 		// 计算过期时间（秒）
 		let expire = Math.floor(timestamp / 1000);
@@ -865,6 +887,41 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 			}
 		}
 
+		// 计算当前流量使用情况（用于编辑页面显示）
+		// 使用与主函数相同的逻辑
+		const totalBytes = currentTotal * 1099511627776; // 转换为字节
+		const oneDayMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
+		const currentTime = Date.now();
+		
+		// 计算起始时间并添加验证
+		let fixedStartTime = currentTimestamp - (currentSubscriptionDays * oneDayMs);
+		if (fixedStartTime > currentTime) {
+			console.log('KV页面：警告：计算的起始时间晚于当前时间，将使用当前时间作为起始时间');
+			fixedStartTime = currentTime;
+		}
+		
+		// 避免起始时间过早
+		const maxPastDays = 365;
+		const minStartTime = currentTime - (maxPastDays * oneDayMs);
+		if (fixedStartTime < minStartTime) {
+			console.log('KV页面：警告：计算的起始时间过早，将限制为最多一年前');
+			fixedStartTime = minStartTime;
+		}
+		
+		// 计算已用和剩余流量
+		const elapsedTime = Math.max(0, currentTime - fixedStartTime);
+		const totalTime = Math.max(oneDayMs, currentTimestamp - fixedStartTime);
+		let usedBytes = 0;
+		if (totalTime > 0) {
+			const elapsedPercent = Math.min(elapsedTime / totalTime, 1);
+			usedBytes = Math.floor(totalBytes * elapsedPercent);
+		}
+		let remainBytes = totalBytes - usedBytes;
+		
+		// 确保不会出现负值
+		if (usedBytes < 0) usedBytes = 0;
+		if (remainBytes < 0) remainBytes = 0;
+        
 		// 格式化日期为YYYY-MM-DD
 		const formatDate = (timestamp) => {
 			const date = new Date(timestamp);
@@ -1200,6 +1257,26 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 												<div class="input-group mb-3">
 													<input type="number" class="form-control" id="subscriptionDays" value="${currentSubscriptionDays}" min="1" max="365">
 													<span class="input-group-text">天</span>
+												</div>
+											</div>
+											<div class="col-12">
+												<div class="alert alert-info">
+													<div class="d-flex align-items-center mb-2">
+														<div style="width: 100%">
+															<div class="d-flex justify-content-between mb-1">
+																<small>已用流量:</small>
+																<small>${(usedBytes / 1099511627776).toFixed(2)} TB</small>
+															</div>
+															<div class="progress" style="height: 8px">
+																<div class="progress-bar bg-info" role="progressbar" style="width: ${Math.min(100, (usedBytes / totalBytes) * 100).toFixed(2)}%" 
+																	aria-valuenow="${Math.min(100, (usedBytes / totalBytes) * 100).toFixed(2)}" aria-valuemin="0" aria-valuemax="100"></div>
+															</div>
+														</div>
+													</div>
+													<div class="d-flex justify-content-between">
+														<small>总计: ${total} TB</small>
+														<small>剩余: ${(remainBytes / 1099511627776).toFixed(2)} TB</small>
+													</div>
 												</div>
 											</div>
 											<div class="col-12">
