@@ -941,6 +941,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					<meta charset="utf-8">
 					<meta name="viewport" content="width=device-width, initial-scale=1">
 					<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+					<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
 					<style>
 						:root {
 							--bs-primary: #3f6ad8;
@@ -956,6 +957,7 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							font-size: 14px;
 							background-color: #f5f6fa;
 							color: #212529;
+							line-height: 1.6;
 						}
 						.container {
 							max-width: 1140px;
@@ -964,24 +966,109 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						}
 						.card {
 							background-color: #fff;
-							border-radius: 8px;
-							box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+							border-radius: 12px;
+							box-shadow: 0 2px 15px rgba(0,0,0,0.05);
 							margin-bottom: 20px;
 							border: 1px solid var(--bs-card-border-color);
+							transition: transform 0.2s ease, box-shadow 0.2s ease;
+						}
+						.card:hover {
+							transform: translateY(-2px);
+							box-shadow: 0 5px 20px rgba(0,0,0,0.08);
 						}
 						.card-header {
 							border-bottom: 1px solid var(--bs-card-border-color);
 							padding: 15px 20px;
 							font-weight: 600;
 							background-color: rgba(0,0,0,0.02);
-							border-top-left-radius: 8px;
-							border-top-right-radius: 8px;
+							border-top-left-radius: 12px;
+							border-top-right-radius: 12px;
 							display: flex;
 							justify-content: space-between;
 							align-items: center;
 						}
 						.card-body {
-							padding: 20px;
+							padding: 25px;
+						}
+						.subscription-link {
+							margin-bottom: 12px;
+						}
+						.subscription-link a {
+							color: var(--bs-primary);
+							text-decoration: none;
+							padding: 8px 15px;
+							border-radius: 6px;
+							background-color: rgba(63, 106, 216, 0.1);
+							transition: all 0.3s ease;
+							display: inline-block;
+							font-weight: 500;
+						}
+						.subscription-link a:hover {
+							background-color: var(--bs-primary);
+							color: #fff;
+							transform: translateX(5px);
+						}
+						.alert {
+							border-radius: 8px;
+							border: none;
+							box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+						}
+						.alert-info {
+							background-color: rgba(63, 106, 216, 0.1);
+							color: var(--bs-primary);
+							border-left: 4px solid var(--bs-primary);
+						}
+						.alert-warning {
+							background-color: #fff8e1;
+							color: #856404;
+							border-left: 4px solid #ffc107;
+						}
+						.btn {
+							padding: 8px 16px;
+							font-weight: 500;
+							border-radius: 6px;
+							transition: all 0.3s ease;
+							text-transform: none;
+							letter-spacing: 0.3px;
+						}
+						.btn-primary {
+							background-color: var(--bs-primary);
+							border-color: var(--bs-primary);
+							box-shadow: 0 2px 6px rgba(63, 106, 216, 0.2);
+						}
+						.btn-primary:hover {
+							background-color: var(--bs-primary-dark);
+							border-color: var(--bs-primary-dark);
+							transform: translateY(-1px);
+							box-shadow: 0 4px 8px rgba(63, 106, 216, 0.3);
+						}
+						.progress {
+							height: 8px;
+							border-radius: 4px;
+							background-color: rgba(0,0,0,0.05);
+							overflow: hidden;
+						}
+						.progress-bar {
+							border-radius: 4px;
+							transition: width 0.6s ease;
+						}
+						.form-control {
+							padding: 10px 15px;
+							border-radius: 6px;
+							border: 1px solid #e0e0e0;
+							transition: all 0.3s ease;
+							font-size: 14px;
+						}
+						.form-control:focus {
+							border-color: var(--bs-primary);
+							box-shadow: 0 0 0 3px rgba(63, 106, 216, 0.15);
+						}
+						.mt-4 a {
+							color: #666;
+							transition: color 0.3s ease;
+						}
+						.mt-4 a:hover {
+							color: var(--bs-primary);
 						}
 						.editor-container {
 							width: 100%;
@@ -1000,64 +1087,6 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							line-height: 1.5;
 							overflow-y: auto;
 							resize: none;
-						}
-						.btn {
-							display: inline-block;
-							font-weight: 500;
-							text-align: center;
-							vertical-align: middle;
-							cursor: pointer;
-							user-select: none;
-							padding: 0.375rem 0.75rem;
-							border-radius: 0.25rem;
-							transition: color 0.15s, background-color 0.15s, border-color 0.15s;
-							border: 1px solid transparent;
-							font-size: 0.9rem;
-						}
-						.btn-primary {
-							color: #fff;
-							background-color: var(--bs-primary);
-							border-color: var(--bs-primary);
-						}
-						.btn-primary:hover {
-							background-color: var(--bs-primary-dark);
-							border-color: var(--bs-primary-dark);
-						}
-						.btn-success {
-							color: #fff;
-							background-color: var(--bs-success);
-							border-color: var(--bs-success);
-						}
-						.btn-success:hover {
-							background-color: #2ea868;
-							border-color: #2ea868;
-						}
-						.form-control {
-							display: block;
-							width: 100%;
-							padding: 0.375rem 0.75rem;
-							font-size: 0.9rem;
-							font-weight: 400;
-							line-height: 1.5;
-							color: #495057;
-							background-color: #fff;
-							background-clip: padding-box;
-							border: 1px solid #ced4da;
-							border-radius: 0.25rem;
-							transition: border-color 0.15s, box-shadow 0.15s;
-						}
-						.input-group {
-							position: relative;
-							display: flex;
-							flex-wrap: wrap;
-							align-items: stretch;
-							width: 100%;
-						}
-						.input-group > .form-control {
-							position: relative;
-							flex: 1 1 auto;
-							width: 1%;
-							min-width: 0;
 						}
 						.badge {
 							display: inline-block;
@@ -1082,19 +1111,6 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 							display: none;
 							margin: 10px 0;
 						}
-						.subscription-link {
-							display: flex;
-							align-items: center;
-							margin-bottom: 5px;
-						}
-						.subscription-link a {
-							color: #3f6ad8;
-							text-decoration: none;
-							margin-right: 10px;
-						}
-						.subscription-link a:hover {
-							text-decoration: underline;
-						}
 						.traffic-settings {
 							margin-top: 15px;
 							padding: 15px;
@@ -1108,6 +1124,73 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 						}
 						.date-picker-container {
 							margin-bottom: 10px;
+						}
+						.toast-container {
+							position: fixed;
+							top: 20px;
+							right: 20px;
+							z-index: 1050;
+						}
+						.toast {
+							background: #fff;
+							border-radius: 8px;
+							box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+							margin-bottom: 10px;
+							opacity: 0;
+							transition: all 0.3s ease;
+						}
+						.toast.show {
+							opacity: 1;
+						}
+						.toast.success {
+							border-left: 4px solid var(--bs-success);
+						}
+						.toast.danger {
+							border-left: 4px solid #dc3545;
+						}
+						.copy-tip {
+							position: fixed;
+							bottom: 20px;
+							left: 50%;
+							transform: translateX(-50%);
+							background: rgba(0,0,0,0.8);
+							color: #fff;
+							padding: 8px 16px;
+							border-radius: 4px;
+							font-size: 14px;
+							opacity: 0;
+							transition: opacity 0.3s ease;
+						}
+						.copy-tip.show {
+							opacity: 1;
+						}
+						.github-link {
+							display: inline-flex;
+							align-items: center;
+							gap: 8px;
+							padding: 8px 16px;
+							background: #24292e;
+							color: #fff !important;
+							border-radius: 6px;
+							text-decoration: none;
+							font-weight: 500;
+							transition: all 0.3s ease;
+						}
+						.github-link:hover {
+							background: #2c3238;
+							transform: translateY(-2px);
+						}
+						.github-link i {
+							font-size: 18px;
+						}
+						@media (max-width: 768px) {
+							.card-body {
+								padding: 15px;
+							}
+							.subscription-link a {
+								width: 100%;
+								text-align: center;
+							}
 						}
 					</style>
 					<script src="https://cdn.jsdelivr.net/npm/@keeex/qrcodejs-kx@1.0.2/qrcode.min.js"></script>
@@ -1137,42 +1220,36 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?sub','qrcode_0')">自适应订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_0')">二维码</button>
 												</div>
 												<div id="qrcode_0" class="qrcode-container"></div>
 											</div>
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?b64','qrcode_1')">Base64订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_1')">二维码</button>
 												</div>
 												<div id="qrcode_1" class="qrcode-container"></div>
 											</div>
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?clash','qrcode_2')">Clash订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_2')">二维码</button>
 												</div>
 												<div id="qrcode_2" class="qrcode-container"></div>
 											</div>
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?sb','qrcode_3')">SingBox订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_3')">二维码</button>
 												</div>
 												<div id="qrcode_3" class="qrcode-container"></div>
 											</div>
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?surge','qrcode_4')">Surge订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_4')">二维码</button>
 												</div>
 												<div id="qrcode_4" class="qrcode-container"></div>
 											</div>
 											<div class="col-md-4 col-sm-6">
 												<div class="subscription-link">
 													<a href="javascript:void(0)" onclick="copyToClipboard('https://${url.hostname}/${mytoken}?loon','qrcode_5')">Loon订阅</a>
-													<button class="btn btn-sm btn-outline-primary" onclick="toggleQR('qrcode_5')">二维码</button>
 												</div>
 												<div id="qrcode_5" class="qrcode-container"></div>
 											</div>
@@ -1322,8 +1399,11 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 									</div>
 								</div>
 								
-								<div class="mt-4 text-center text-muted">
-									${decodeURIComponent(atob('dGVsZWdyYW0lMjAlRTQlQkElQTQlRTYlQjUlODElRTclQkUlQTQlMjAlRTYlOEElODAlRTYlOUMlQUYlRTUlQTQlQTclRTQlQkQlQUMlN0UlRTUlOUMlQTglRTclQkElQkYlRTUlOEYlOTElRTclODklOEMhJTNDYnIlM0UKJTNDYSUyMGhyZWYlM0QlMjdodHRwcyUzQSUyRiUyRnQubWUlMkZDTUxpdXNzc3MlMjclM0VodHRwcyUzQSUyRiUyRnQubWUlMkZDTUxpdXNzc3MlM0MlMkZhJTNFJTNDYnIlM0UKLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tJTNDYnIlM0UKZ2l0aHViJTIwJUU5JUExJUI5JUU3JTlCJUFFJUU1JTlDJUIwJUU1JTlEJTgwJTIwU3RhciFTdGFyIVN0YXIhISElM0NiciUzRQolM0NhJTIwaHJlZiUzRCUyN2h0dHBzJTNBJTJGJTJGZ2l0aHViLmNvbSUyRmNtbGl1JTJGQ0YtV29ya2Vycy1TVUIlMjclM0VodHRwcyUzQSUyRiUyRmdpdGh1Yi5jb20lMkZjbWxpdSUyRkNGLVdvcmtlcnMtU1VCJTNDJTJGYSUzRSUzQ2JyJTNFCg=='))}
+								<div class="mt-4 text-center">
+									<a href='https://github.com/cmliu/CF-Workers-SUB' class="github-link">
+										<i class="bi bi-github"></i>
+										<span>GitHub 项目地址</span>
+									</a>
 								</div>
 								
 								<div class="mt-3">
@@ -1334,82 +1414,57 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					</div>
 				</body>
 				<script>
-				function copyToClipboard(text, qrcode) {
-					navigator.clipboard.writeText(text).then(() => {
-						showToast('已复制到剪贴板');
-					}).catch(err => {
-						console.error('复制失败:', err);
-						showToast('复制失败，请手动复制', 'danger');
-					});
-					generateQRCode(text, qrcode);
-				}
-				
-				function generateQRCode(text, qrcodeId) {
-					const qrcodeDiv = document.getElementById(qrcodeId);
-					qrcodeDiv.innerHTML = '';
-					new QRCode(qrcodeDiv, {
-						text: text,
-						width: 200,
-						height: 200,
-						colorDark: "#000000",
-						colorLight: "#ffffff",
-						correctLevel: QRCode.CorrectLevel.H
-					});
-					qrcodeDiv.style.display = 'block';
-				}
-				
-				function toggleQR(qrcodeId) {
-					const qrcodeDiv = document.getElementById(qrcodeId);
-					if (qrcodeDiv.style.display === 'none' || qrcodeDiv.style.display === '') {
-						qrcodeDiv.style.display = 'block';
-					} else {
-						qrcodeDiv.style.display = 'none';
-					}
-				}
-				
-				function showToast(message, type = 'success') {
-					// 创建更美观的通知，而不是简单的alert
-					// 检查是否已存在toast容器
-					let toastContainer = document.getElementById('toast-container');
-					if (!toastContainer) {
-						toastContainer = document.createElement('div');
-						toastContainer.id = 'toast-container';
-						toastContainer.style.position = 'fixed';
-						toastContainer.style.top = '20px';
-						toastContainer.style.right = '20px';
-						toastContainer.style.zIndex = '1050';
-						document.body.appendChild(toastContainer);
-					}
-					
-					// 创建新toast
+				function showToast(message, type) {
+					type = type || 'success';
+					const toastContainer = document.getElementById('toast-container') || createToastContainer();
 					const toast = document.createElement('div');
-					toast.className = type === 'danger' ? 'alert alert-danger' : 'alert alert-success';
+					toast.className = 'toast ' + type;
+					toast.style.padding = '12px 20px';
 					toast.style.minWidth = '250px';
-					toast.style.marginBottom = '10px';
-					toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-					toast.style.transition = 'all 0.3s ease';
-					toast.style.opacity = '0';
-					
-					// 设置内容
 					toast.textContent = message;
 					
-					// 添加到容器
 					toastContainer.appendChild(toast);
-					
-					// 显示toast
 					setTimeout(function() {
-						toast.style.opacity = '1';
+						toast.classList.add('show');
 					}, 10);
 					
-					// 定时关闭
 					setTimeout(function() {
-						toast.style.opacity = '0';
+						toast.classList.remove('show');
 						setTimeout(function() {
 							toastContainer.removeChild(toast);
 						}, 300);
 					}, 3000);
 				}
 					
+				function createToastContainer() {
+					const container = document.createElement('div');
+					container.id = 'toast-container';
+					container.className = 'toast-container';
+					document.body.appendChild(container);
+					return container;
+				}
+					
+				function copyToClipboard(text) {
+					navigator.clipboard.writeText(text).then(function() {
+						showToast('已复制到剪贴板');
+					}).catch(function(err) {
+						console.error('复制失败:', err);
+						showToast('复制失败，请手动复制', 'danger');
+					});
+				}
+					
+				function toggleNotice() {
+					const noticeContent = document.getElementById('noticeContent');
+					const noticeToggle = document.getElementById('noticeToggle');
+					if (noticeContent.style.display === 'none' || noticeContent.style.display === '') {
+						noticeContent.style.display = 'block';
+						noticeToggle.textContent = '隐藏访客订阅 ▲';
+					} else {
+						noticeContent.style.display = 'none';
+						noticeToggle.textContent = '查看访客订阅 ▼';
+					}
+				}
+				
 				if (document.querySelector('.editor')) {
 					let timer;
 					const textarea = document.getElementById('content');
@@ -1520,18 +1575,29 @@ async function KV(request, env, txt = 'ADD.txt', guest) {
 					});
 				}
 
-				function toggleNotice() {
-					const noticeContent = document.getElementById('noticeContent');
-					const noticeToggle = document.getElementById('noticeToggle');
-					if (noticeContent.style.display === 'none' || noticeContent.style.display === '') {
-						noticeContent.style.display = 'block';
-						noticeToggle.textContent = '隐藏访客订阅 ▲';
-					} else {
-						noticeContent.style.display = 'none';
-						noticeToggle.textContent = '查看访客订阅 ▼';
-					}
+				function generateQRCode(text, qrcodeId) {
+					const qrcodeDiv = document.getElementById(qrcodeId);
+					qrcodeDiv.innerHTML = '';
+					new QRCode(qrcodeDiv, {
+						text: text,
+						width: 200,
+						height: 200,
+						colorDark: "#000000",
+						colorLight: "#ffffff",
+						correctLevel: QRCode.CorrectLevel.H
+					});
+					qrcodeDiv.style.display = 'block';
 				}
 				
+				function toggleQR(qrcodeId) {
+					const qrcodeDiv = document.getElementById(qrcodeId);
+					if (qrcodeDiv.style.display === 'none' || qrcodeDiv.style.display === '') {
+						qrcodeDiv.style.display = 'block';
+					} else {
+						qrcodeDiv.style.display = 'none';
+					}
+				}
+
 				// 保存流量设置
 				function saveTrafficSettings() {
 					const totalTraffic = document.getElementById('totalTraffic').value;
