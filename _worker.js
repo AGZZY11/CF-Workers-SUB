@@ -54,6 +54,21 @@ export default {
 		guestToken = env.GUESTTOKEN || env.GUEST || guestToken;
 		if (!guestToken) guestToken = await MD5MD5(mytoken);
 		const 访客订阅 = guestToken;
+
+		// 检查订阅是否过期
+		const isExpired = Date.now() >= timestamp;
+		if (isExpired) {
+			const expiredMessage = "订阅已过期，请联系管理员续费";
+			const expiredBase64 = btoa(expiredMessage);
+			return new Response(expiredBase64, {
+				headers: {
+					"content-type": "text/plain; charset=utf-8",
+					"Profile-Update-Interval": `${SUBUpdateTime}`,
+					"Subscription-Userinfo": `upload=${usedBytes}; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+				}
+			});
+		}
+
 		//console.log(`${fakeUserID}\n${fakeHostName}`); // 打印fakeID
 
 		// 获取流量和时间戳设置
