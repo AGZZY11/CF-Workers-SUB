@@ -54,136 +54,18 @@ export default {
 		guestToken = env.GUESTTOKEN || env.GUEST || guestToken;
 		if (!guestToken) guestToken = await MD5MD5(mytoken);
 		const 访客订阅 = guestToken;
-		//console.log(`${fakeUserID}\n${fakeHostName}`); // 打印fakeID
 
-		// 获取流量和时间戳设置
-		if (env.KV) {
-			try {
-				const kvTotal = await env.KV.get('TOTAL');
-				if (kvTotal) {
-					console.log('从KV读取到总流量值:', kvTotal);
-					total = parseInt(kvTotal);
-				} else {
-					console.log('KV中未找到总流量值，使用默认值:', total);
-				}
-				
-				const kvTimestamp = await env.KV.get('TIMESTAMP');
-				if (kvTimestamp) {
-					console.log('从KV读取到过期时间戳:', kvTimestamp);
-					timestamp = parseInt(kvTimestamp);
-				} else {
-					console.log('KV中未找到过期时间戳，使用默认值:', timestamp);
-				}
-				
-				const kvSubscriptionDays = await env.KV.get('SUBSCRIPTION_DAYS');
-				if (kvSubscriptionDays) {
-					console.log('从KV读取到订阅周期天数:', kvSubscriptionDays);
-					subscriptionDays = parseInt(kvSubscriptionDays);
-				} else {
-					console.log('KV中未找到订阅周期天数，使用默认值:', subscriptionDays);
-				}
-			} catch (error) {
-				console.error('读取流量参数时发生错误:', error);
+		// 验证token
+		const isValidToken = [mytoken, fakeToken, 访客订阅].includes(token) || 
+			url.pathname == ("/" + mytoken) || 
+			url.pathname.includes("/" + mytoken + "?");
+
+		// 如果是浏览器访问但没有有效token，返回伪装页面
+		if (!isValidToken) {
+			if (TG == 1 && url.pathname !== "/" && url.pathname !== "/favicon.ico") {
+				await sendMessage(`#异常访问 ${FileName}`, request.headers.get('CF-Connecting-IP'), 
+					`UA: ${userAgent}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
 			}
-		}
-
-		// 计算流量信息 - 基于当前时间与过期时间的差值
-		// 如果没有从KV中获取设置，则使用默认值
-		console.log('开始计算流量信息 --------------');
-		console.log('当前时间:', new Date(Date.now()).toISOString());
-		console.log('过期时间戳:', timestamp, '对应日期:', new Date(timestamp).toISOString());
-		console.log('订阅周期天数:', subscriptionDays);
-
-		const totalBytes = total * 1099511627776; // 转换为字节 (TB to bytes)
-		console.log('总流量(字节):', totalBytes, '总流量(TB):', total);
-
-		// 计算已使用流量 - 使用固定的起始日期
-		const currentTime = Date.now();
-
-		// 从过期时间计算固定的起始时间（根据订阅周期天数）
-		const oneDayMs = 24 * 60 * 60 * 1000; // 一天的毫秒数
-		let fixedStartTime = timestamp - (subscriptionDays * oneDayMs); // 过期时间减去订阅周期
-
-		// 确保起始时间不会超过当前时间（避免出现负值流量）
-		if (fixedStartTime > currentTime) {
-			console.log('警告：计算的起始时间晚于当前时间，将使用当前时间作为起始时间');
-			fixedStartTime = currentTime;
-		}
-
-		// 确保起始时间不会早于很久以前（避免异常大的已用流量）
-		const maxPastDays = 365; // 最多追溯一年
-		const minStartTime = currentTime - (maxPastDays * oneDayMs);
-		if (fixedStartTime < minStartTime) {
-			console.log('警告：计算的起始时间过早，将限制为最多一年前');
-			fixedStartTime = minStartTime;
-		}
-
-		console.log('固定起始时间计算: 过期时间戳', timestamp, '- (订阅周期', subscriptionDays, '* 一天毫秒数', oneDayMs, ') =', fixedStartTime);
-		console.log('固定起始时间:', new Date(fixedStartTime).toISOString());
-		console.log('当前时间:', new Date(currentTime).toISOString());
-		console.log('过期时间:', new Date(timestamp).toISOString());
-
-		// 计算已经过去的时间和总订阅时间
-		const elapsedTime = Math.max(0, currentTime - fixedStartTime); // 确保不会出现负值
-		const totalTime = Math.max(oneDayMs, timestamp - fixedStartTime); // 确保总时间至少为一天
-		console.log('总订阅天数:', (totalTime / oneDayMs).toFixed(2), '天');
-		console.log('已过天数:', (elapsedTime / oneDayMs).toFixed(2), '天');
-		console.log('时间百分比:', (elapsedTime/totalTime).toFixed(4), ' (', elapsedTime, '/', totalTime, ')');
-
-		// 计算已用流量（基于时间比例）
-		let usedBytes = 0;
-		if (totalTime > 0) { // 只要总时间大于0就计算
-			const elapsedPercent = Math.min(elapsedTime / totalTime, 1); // 限制比例最大为1（100%）
-			console.log('elapsedPercent =', elapsedPercent);
-			// 确保不超过总流量
-			usedBytes = Math.floor(totalBytes * elapsedPercent);
-			console.log('usedBytes = totalBytes *', elapsedPercent, '=', usedBytes);
-		} 
-
-		// 剩余流量
-		let remainBytes = totalBytes - usedBytes;
-		console.log('remainBytes = totalBytes - usedBytes =', totalBytes, '-', usedBytes, '=', remainBytes);
-
-		// 确保不会出现负值
-		if (usedBytes < 0) {
-			console.log('usedBytes < 0, 设为0');
-			usedBytes = 0;
-		}
-		if (remainBytes < 0) {
-			console.log('remainBytes < 0, 设为0');
-			remainBytes = 0;
-		}
-
-		console.log('已用流量(字节):', usedBytes, 
-		            '已用流量(TB):', (usedBytes / 1099511627776).toFixed(2),
-		            '剩余流量(TB):', (remainBytes / 1099511627776).toFixed(2));
-
-		// 处理过期时间
-		// 如果过期时间已经过去，将其设置为当前时间后的一天
-		if (timestamp < currentTime) {
-			console.log('警告：过期时间已过去，将设置为当前时间后的一天');
-			timestamp = currentTime + oneDayMs;
-		}
-
-		// 计算过期时间（秒）
-		let expire = Math.floor(timestamp / 1000);
-		console.log('过期时间(秒):', expire, '过期日期:', new Date(expire * 1000).toISOString());
-		console.log('流量计算完成 --------------');
-		SUBUpdateTime = env.SUBUPTIME || SUBUpdateTime;
-
-		// 特殊处理：对KV和特定路径的请求直接转发到KV函数
-		if (env.KV && (
-			// 检查是否为流量参数更新请求
-			(request.method === "POST" && url.searchParams.has('updateTraffic')) ||
-			// 检查是否为编辑页面请求
-			(userAgent.includes('mozilla') && !url.search)
-		)) {
-			console.log('检测到KV相关请求，转发到KV函数');
-			return await KV(request, env, 'LINK.txt', 访客订阅);
-		}
-
-		if (!([mytoken, fakeToken, 访客订阅].includes(token) || url.pathname == ("/" + mytoken) || url.pathname.includes("/" + mytoken + "?"))) {
-			if (TG == 1 && url.pathname !== "/" && url.pathname !== "/favicon.ico") await sendMessage(`#异常访问 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgent}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
 			if (env.URL302) return Response.redirect(env.URL302, 302);
 			else if (env.URL) return await proxyURL(env.URL, url);
 			else return new Response(await nginx(), {
@@ -192,113 +74,135 @@ export default {
 					'Content-Type': 'text/html; charset=UTF-8',
 				},
 			});
+		}
+
+		// 只有在token验证通过后才处理KV相关请求
+		if (env.KV && (
+			(request.method === "POST" && url.searchParams.has('updateTraffic')) ||
+			(userAgent.includes('mozilla') && !url.search)
+		)) {
+			console.log('检测到KV相关请求，转发到KV函数');
+			return await KV(request, env, 'LINK.txt', 访客订阅);
+		}
+
+		if (env.KV) {
+			await 迁移地址列表(env, 'LINK.txt');
+			MainData = await env.KV.get('LINK.txt') || MainData;
 		} else {
-			if (env.KV) {
-				await 迁移地址列表(env, 'LINK.txt');
-				// 注释掉下面的部分，因为已经在前面处理过KV相关的请求
-				/*
-				if (userAgent.includes('mozilla') && !url.search) {
-					await sendMessage(`#编辑订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
-					return await KV(request, env, 'LINK.txt', 访客订阅);
-				} else {
-					MainData = await env.KV.get('LINK.txt') || MainData;
-				}
-				*/
-				
-				// 只获取节点列表数据
-				MainData = await env.KV.get('LINK.txt') || MainData;
+			MainData = env.LINK || MainData;
+			if (env.LINKSUB) urls = await ADD(env.LINKSUB);
+		}
+		let 重新汇总所有链接 = await ADD(MainData + '\n' + urls.join('\n'));
+		let 自建节点 = "";
+		let 订阅链接 = "";
+		for (let x of 重新汇总所有链接) {
+			if (x.toLowerCase().startsWith('http')) {
+				订阅链接 += x + '\n';
 			} else {
-				MainData = env.LINK || MainData;
-				if (env.LINKSUB) urls = await ADD(env.LINKSUB);
+				自建节点 += x + '\n';
 			}
-			let 重新汇总所有链接 = await ADD(MainData + '\n' + urls.join('\n'));
-			let 自建节点 = "";
-			let 订阅链接 = "";
-			for (let x of 重新汇总所有链接) {
-				if (x.toLowerCase().startsWith('http')) {
-					订阅链接 += x + '\n';
-				} else {
-					自建节点 += x + '\n';
-				}
-			}
-			MainData = 自建节点;
-			urls = await ADD(订阅链接);
-			await sendMessage(`#获取订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
+		}
+		MainData = 自建节点;
+		urls = await ADD(订阅链接);
+		await sendMessage(`#获取订阅 ${FileName}`, request.headers.get('CF-Connecting-IP'), `UA: ${userAgentHeader}</tg-spoiler>\n域名: ${url.hostname}\n<tg-spoiler>入口: ${url.pathname + url.search}</tg-spoiler>`);
 
-			let 订阅格式 = 'base64';
-			if (userAgent.includes('null') || userAgent.includes('subconverter') || userAgent.includes('nekobox') || userAgent.includes(('CF-Workers-SUB').toLowerCase())) {
-				订阅格式 = 'base64';
-			} else if (userAgent.includes('clash') || (url.searchParams.has('clash') && !userAgent.includes('subconverter'))) {
-				订阅格式 = 'clash';
-			} else if (userAgent.includes('sing-box') || userAgent.includes('singbox') || ((url.searchParams.has('sb') || url.searchParams.has('singbox')) && !userAgent.includes('subconverter'))) {
-				订阅格式 = 'singbox';
-			} else if (userAgent.includes('surge') || (url.searchParams.has('surge') && !userAgent.includes('subconverter'))) {
-				订阅格式 = 'surge';
-			} else if (userAgent.includes('quantumult%20x') || (url.searchParams.has('quanx') && !userAgent.includes('subconverter'))) {
-				订阅格式 = 'quanx';
-			} else if (userAgent.includes('loon') || (url.searchParams.has('loon') && !userAgent.includes('subconverter'))) {
-				订阅格式 = 'loon';
-			}
+		let 订阅格式 = 'base64';
+		if (userAgent.includes('null') || userAgent.includes('subconverter') || userAgent.includes('nekobox') || userAgent.includes(('CF-Workers-SUB').toLowerCase())) {
+			订阅格式 = 'base64';
+		} else if (userAgent.includes('clash') || (url.searchParams.has('clash') && !userAgent.includes('subconverter'))) {
+			订阅格式 = 'clash';
+		} else if (userAgent.includes('sing-box') || userAgent.includes('singbox') || ((url.searchParams.has('sb') || url.searchParams.has('singbox')) && !userAgent.includes('subconverter'))) {
+			订阅格式 = 'singbox';
+		} else if (userAgent.includes('surge') || (url.searchParams.has('surge') && !userAgent.includes('subconverter'))) {
+			订阅格式 = 'surge';
+		} else if (userAgent.includes('quantumult%20x') || (url.searchParams.has('quanx') && !userAgent.includes('subconverter'))) {
+			订阅格式 = 'quanx';
+		} else if (userAgent.includes('loon') || (url.searchParams.has('loon') && !userAgent.includes('subconverter'))) {
+			订阅格式 = 'loon';
+		}
 
-			let subConverterUrl;
-			let 订阅转换URL = `${url.origin}/${await MD5MD5(fakeToken)}?token=${fakeToken}`;
-			//console.log(订阅转换URL);
-			let req_data = MainData;
+		let subConverterUrl;
+		let 订阅转换URL = `${url.origin}/${await MD5MD5(fakeToken)}?token=${fakeToken}`;
+		//console.log(订阅转换URL);
+		let req_data = MainData;
 
-			let 追加UA = 'v2rayn';
-			if (url.searchParams.has('b64') || url.searchParams.has('base64')) 订阅格式 = 'base64';
-			else if (url.searchParams.has('clash')) 追加UA = 'clash';
-			else if (url.searchParams.has('singbox')) 追加UA = 'singbox';
-			else if (url.searchParams.has('surge')) 追加UA = 'surge';
-			else if (url.searchParams.has('quanx')) 追加UA = 'Quantumult%20X';
-			else if (url.searchParams.has('loon')) 追加UA = 'Loon';
+		let 追加UA = 'v2rayn';
+		if (url.searchParams.has('b64') || url.searchParams.has('base64')) 订阅格式 = 'base64';
+		else if (url.searchParams.has('clash')) 追加UA = 'clash';
+		else if (url.searchParams.has('singbox')) 追加UA = 'singbox';
+		else if (url.searchParams.has('surge')) 追加UA = 'surge';
+		else if (url.searchParams.has('quanx')) 追加UA = 'Quantumult%20X';
+		else if (url.searchParams.has('loon')) 追加UA = 'Loon';
 
-			const 请求订阅响应内容 = await getSUB(urls, request, 追加UA, userAgentHeader);
-			console.log(请求订阅响应内容);
-			req_data += 请求订阅响应内容[0].join('\n');
-			订阅转换URL += "|" + 请求订阅响应内容[1];
+		const 请求订阅响应内容 = await getSUB(urls, request, 追加UA, userAgentHeader);
+		console.log(请求订阅响应内容);
+		req_data += 请求订阅响应内容[0].join('\n');
+		订阅转换URL += "|" + 请求订阅响应内容[1];
 
-			if (env.WARP) 订阅转换URL += "|" + (await ADD(env.WARP)).join("|");
-			//修复中文错误
-			const utf8Encoder = new TextEncoder();
-			const encodedData = utf8Encoder.encode(req_data);
-			//const text = String.fromCharCode.apply(null, encodedData);
-			const utf8Decoder = new TextDecoder();
-			const text = utf8Decoder.decode(encodedData);
+		if (env.WARP) 订阅转换URL += "|" + (await ADD(env.WARP)).join("|");
+		//修复中文错误
+		const utf8Encoder = new TextEncoder();
+		const encodedData = utf8Encoder.encode(req_data);
+		//const text = String.fromCharCode.apply(null, encodedData);
+		const utf8Decoder = new TextDecoder();
+		const text = utf8Decoder.decode(encodedData);
 
-			//去重
-			const uniqueLines = new Set(text.split('\n'));
-			const result = [...uniqueLines].join('\n');
-			//console.log(result);
+		//去重
+		const uniqueLines = new Set(text.split('\n'));
+		const result = [...uniqueLines].join('\n');
+		//console.log(result);
 
-			let base64Data;
-			try {
-				base64Data = btoa(result);
-			} catch (e) {
-				function encodeBase64(data) {
-					const binary = new TextEncoder().encode(data);
-					let base64 = '';
-					const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+		let base64Data;
+		try {
+			base64Data = btoa(result);
+		} catch (e) {
+			function encodeBase64(data) {
+				const binary = new TextEncoder().encode(data);
+				let base64 = '';
+				const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-					for (let i = 0; i < binary.length; i += 3) {
-						const byte1 = binary[i];
-						const byte2 = binary[i + 1] || 0;
-						const byte3 = binary[i + 2] || 0;
+				for (let i = 0; i < binary.length; i += 3) {
+					const byte1 = binary[i];
+					const byte2 = binary[i + 1] || 0;
+					const byte3 = binary[i + 2] || 0;
 
-						base64 += chars[byte1 >> 2];
-						base64 += chars[((byte1 & 3) << 4) | (byte2 >> 4)];
-						base64 += chars[((byte2 & 15) << 2) | (byte3 >> 6)];
-						base64 += chars[byte3 & 63];
-					}
-
-					const padding = 3 - (binary.length % 3 || 3);
-					return base64.slice(0, base64.length - padding) + '=='.slice(0, padding);
+					base64 += chars[byte1 >> 2];
+					base64 += chars[((byte1 & 3) << 4) | (byte2 >> 4)];
+					base64 += chars[((byte2 & 15) << 2) | (byte3 >> 6)];
+					base64 += chars[byte3 & 63];
 				}
 
-				base64Data = encodeBase64(result.replace(/\u0026/g, '&'))
+				const padding = 3 - (binary.length % 3 || 3);
+				return base64.slice(0, base64.length - padding) + '=='.slice(0, padding);
 			}
 
-			if (订阅格式 == 'base64' || token == fakeToken) {
+			base64Data = encodeBase64(result.replace(/\u0026/g, '&'))
+		}
+
+		if (订阅格式 == 'base64' || token == fakeToken) {
+			return new Response(base64Data, {
+				headers: {
+					"content-type": "text/plain; charset=utf-8",
+					"Profile-Update-Interval": `${SUBUpdateTime}`,
+					"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+				}
+			});
+		} else if (订阅格式 == 'clash') {
+			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=clash&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
+		} else if (订阅格式 == 'singbox') {
+			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=singbox&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
+		} else if (订阅格式 == 'surge') {
+			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=surge&ver=4&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
+		} else if (订阅格式 == 'quanx') {
+			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=quanx&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&udp=true`;
+		} else if (订阅格式 == 'loon') {
+			subConverterUrl = `${subProtocol}://${subConverter}/sub?target=loon&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false`;
+		}
+		//console.log(订阅转换URL);
+		try {
+			const subConverterResponse = await fetch(subConverterUrl);
+
+			if (!subConverterResponse.ok) {
 				return new Response(base64Data, {
 					headers: {
 						"content-type": "text/plain; charset=utf-8",
@@ -306,50 +210,26 @@ export default {
 						"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 					}
 				});
-			} else if (订阅格式 == 'clash') {
-				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=clash&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
-			} else if (订阅格式 == 'singbox') {
-				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=singbox&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
-			} else if (订阅格式 == 'surge') {
-				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=surge&ver=4&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&new_name=true`;
-			} else if (订阅格式 == 'quanx') {
-				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=quanx&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false&udp=true`;
-			} else if (订阅格式 == 'loon') {
-				subConverterUrl = `${subProtocol}://${subConverter}/sub?target=loon&url=${encodeURIComponent(订阅转换URL)}&insert=false&config=${encodeURIComponent(subConfig)}&emoji=true&list=false&tfo=false&scv=true&fdn=false&sort=false`;
+				//throw new Error(`Error fetching subConverterUrl: ${subConverterResponse.status} ${subConverterResponse.statusText}`);
 			}
-			//console.log(订阅转换URL);
-			try {
-				const subConverterResponse = await fetch(subConverterUrl);
-
-				if (!subConverterResponse.ok) {
-					return new Response(base64Data, {
-						headers: {
-							"content-type": "text/plain; charset=utf-8",
-							"Profile-Update-Interval": `${SUBUpdateTime}`,
-							"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
-						}
-					});
-					//throw new Error(`Error fetching subConverterUrl: ${subConverterResponse.status} ${subConverterResponse.statusText}`);
+			let subConverterContent = await subConverterResponse.text();
+			if (订阅格式 == 'clash') subConverterContent = await clashFix(subConverterContent);
+			return new Response(subConverterContent, {
+				headers: {
+					"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}`,
+					"content-type": "text/plain; charset=utf-8",
+					"Profile-Update-Interval": `${SUBUpdateTime}`,
+					"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
+				},
+			});
+		} catch (error) {
+			return new Response(base64Data, {
+				headers: {
+					"content-type": "text/plain; charset=utf-8",
+					"Profile-Update-Interval": `${SUBUpdateTime}`,
+					"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
 				}
-				let subConverterContent = await subConverterResponse.text();
-				if (订阅格式 == 'clash') subConverterContent = await clashFix(subConverterContent);
-				return new Response(subConverterContent, {
-					headers: {
-						"Content-Disposition": `attachment; filename*=utf-8''${encodeURIComponent(FileName)}`,
-						"content-type": "text/plain; charset=utf-8",
-						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
-					},
-				});
-			} catch (error) {
-				return new Response(base64Data, {
-					headers: {
-						"content-type": "text/plain; charset=utf-8",
-						"Profile-Update-Interval": `${SUBUpdateTime}`,
-						"Subscription-Userinfo": `upload=0; download=${usedBytes}; total=${totalBytes}; expire=${expire}`,
-					}
-				});
-			}
+			});
 		}
 	}
 };
